@@ -1,0 +1,101 @@
+= dm-adapter-simpledb
+
+Written by Jeremy Boles
+Contributers Edward Ocampo-Gooding, Dan Mayer
+
+A DataMapper adapter for SimpleDB.
+
+This version combines elements of Jeremy's orginal project, adding in code from Edward Ocampo-Gooding. It also includes various bug fixes and updates from Dan Mayer.
+
+Tested using Matthew Painter’s SimpleDB/dev http://code.google.com/p/simpledb-dev/
+Additional SimpleDB/dev setup notes found here: http://pandastream.tumblr.com/post/52779609/playing-with-panda-without-simpledb-account
+
+== Current state
+
+   Updated to work with current versions of DataMapper and Merb, in use on small production sites.
+
+   When starting this project, I assumed that SimpleDB allowed queries to span more than one domain. I was terribly wrong.
+  In lieu of that, this SimpleDB adapter follows the Single Table Inheritance pattern espoused by articles online and seen in a variety of similar libraries (see Bibliography). What a bummer.
+
+== Future goals
+
+  * Parallelized queries for increased throughput
+  * Support of normalized 1:1 table:domain schemes that works with associations
+  * Local caching of results using something like query strings for cache keys
+
+== Usage
+  
+  === Standalone
+  
+    require 'rubygems'
+    require 'dm-core'
+    
+    DataMapper.setup(:default, 'simpledb://sdb.amazon.com/sweetapp_development', :access_key_id => 'a valid access key id', :secret_access_key => 'a valid secret access key id')
+    
+    [Same as the following, but skip the database.yml]
+    
+  === In a Merb application
+    See sample Merb application using Merb-Auth and protected resources on SimpleDB:
+    http://github.com/danmayer/merb-simpledb-dm_example/tree/master
+  
+    Setup database.yml with the SimpleDB DataMapper adapter:
+
+      adapter:  simpledb
+      database: 'default'
+      access_key_id: (a 20-character, alphanumeric sequence)
+      secret_access_key: (a 40-character sequence)
+      domain: 'sweetapp_development'
+      base_url: 'http://sdb.amazon.com'
+
+    Alternatively, 
+
+    Create a model
+  
+      class Tree
+        include DataMapper::Resource
+      
+        storage_name "trees"  # manually setting the domain
+      
+        property :id,   Integer, :serial => true
+        property :name, String, :nullable => false
+      end
+
+    Use interactively (with merb -i)
+  
+    $ merb -i
+  
+      maple = Tree.new
+      maple.name = "Acer rubrum"
+      maple.save
+    
+      all_trees = Tree.all() # calls #read_all
+      a_tree = Tree.first(:name => "Acer rubrum")
+      yanked_tree = Tree.remote(:name => "Acer rubrum")
+
+== Running the tests
+   add these two lines to your .bash_profile as the spec_helper relies on them
+   export AMAZON_ACCESS_KEY_ID='YOUR_ACCESS_KEY'
+   export AMAZON_SECRET_ACCESS_KEY='YOUR_SECRET_ACCESS_KEY'
+   
+   Create the test domain on SimpleDB, :domain => 'missionaries' as found in spec_helper. This can be done easiest via IRB or I went to a project that had a database.yml and called db:automigrate because of the added migration support to this adaprter.
+
+   rake spec
+
+== Bibliography
+  Relating to Amazon SimpleDB http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1292&ref=featured
+    Approaching SimpleDB from a relational database background
+  
+  Active Record Persistence with Amazon SimpleDB http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1367&categoryID=152
+  
+  Building for Performance and Reliability with Amazon SimpleDB  http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1394&categoryID=152
+  
+  Query 101: Building Amazon SimpleDB Queries  http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1231&categoryID=152
+  
+  Query 201: Tips & Tricks for Amazon SimpleDB Query  http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1232&categoryID=152
+    Latter portion describes parallelization advantages of normalized domains – the downside being the added complexity at the application layer (this library’s).
+  
+  Using SimpleDB and Rails in No Time with ActiveResource  http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1242&categoryID=152
+    Exemplifies using the Single Table Inheritance pattern within a single SimpleDB domain by storing the model type in an attribute called '_resource' and using a “SHA512 hash function on the request body combined with a timestamp and a configurable salt” for the id.
+  
+  RightScale Ruby library to access Amazon EC2, S3, SQS, and SDB  http://developer.amazonwebservices.com/connect/entry!default.jspa?categoryID=140&externalID=1014&fromSearchPage=true
+  
