@@ -28,53 +28,6 @@ module DataMapper
         raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(query)
         deleted
       end
-      
-      def set_conditions(query, sdb_type)
-        conditions = ["['simpledb_type' = '#{sdb_type}']"]
-        if query.conditions.size > 0
-          conditions += query.conditions.map do |condition|
-            operator = case condition[0]
-              when :eql then '='
-              when :not then '!='
-              when :gt then '>'
-              when :gte then '>='
-              when :lt then '<'
-              when :lte then '<='
-              else raise "Invalid query operator: #{operator.inspect}"
-            end
-            "['#{condition[1].name.to_s}' #{operator} '#{condition[2].to_s}']"
-          end
-        end
-        conditions
-      end
-
-      def set_sort_order(query, conditions)
-        if query.order!=nil && query.order.length > 0
-          query_object = query.order[0]
-          conditions << "['#{query_object.property.name.to_s}'> '']" #anything sorted on must be a condition
-          order = "sort '#{query_object.property.name.to_s}' #{query_object.direction==:desc ? 'DESC' : 'ASC'}"
-        else
-          order = ""
-        end
-      end
-      
-      def get_results(query, conditions, order)
-        results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}")
-        if query.limit!=nil && query.limit <= results[0].length
-          results[0] = results[0][0...query.limit]
-        else
-          sdb_continuation_key = results[1]
-          #this means there are more results to retrieve from SDB
-          while sdb_continuation_key!='' do
-            old_results = results
-            results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}", nil, sdb_continuation_key)
-            results[0] = old_results[0] + results[0]
-            sdb_continuation_key = results[1]
-          end
-        end
-        #todo use newer SDB batch get attributes
-        results = results[0].map {|d| sdb.get_attributes(domain, d) }
-      end
 
       def read_many(query)
         sdb_type = simpledb_type(query.model)
@@ -120,10 +73,60 @@ module DataMapper
       end
       
     private
-      
+
       # Returns the domain for the model
       def domain
         @uri[:domain]
+      end
+
+      #sets the conditions for the SDB query
+      def set_conditions(query, sdb_type)
+        conditions = ["['simpledb_type' = '#{sdb_type}']"]
+        if query.conditions.size > 0
+          conditions += query.conditions.map do |condition|
+            operator = case condition[0]
+              when :eql then '='
+              when :not then '!='
+              when :gt then '>'
+              when :gte then '>='
+              when :lt then '<'
+              when :lte then '<='
+              else raise "Invalid query operator: #{operator.inspect}"
+            end
+            "['#{condition[1].name.to_s}' #{operator} '#{condition[2].to_s}']"
+          end
+        end
+        conditions
+      end
+
+      #adds sort information to SDB query
+      def set_sort_order(query, conditions)
+        if query.order!=nil && query.order.length > 0
+          query_object = query.order[0]
+          conditions << "['#{query_object.property.name.to_s}'> '']" #anything sorted on must be a condition
+          order = "sort '#{query_object.property.name.to_s}' #{query_object.direction==:desc ? 'DESC' : 'ASC'}"
+        else
+          order = ""
+        end
+      end
+      
+      #gets all results or proper number of results depending on the :limit
+      def get_results(query, conditions, order)
+        results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}")
+        if query.limit!=nil && query.limit <= results[0].length
+          results[0] = results[0][0...query.limit]
+        else
+          sdb_continuation_key = results[1]
+          #this means there are more results to retrieve from SDB
+          while sdb_continuation_key!='' do
+            old_results = results
+            results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}", nil, sdb_continuation_key)
+            results[0] = old_results[0] + results[0]
+            sdb_continuation_key = results[1]
+          end
+        end
+        #todo use newer SDB batch get attributes
+        results = results[0].map {|d| sdb.get_attributes(domain, d) }
       end
       
       # Creates an item name for a query
