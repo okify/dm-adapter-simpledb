@@ -29,9 +29,7 @@ module DataMapper
         deleted
       end
       
-      def read_many(query)
-        sdb_type = simpledb_type(query.model)
-        
+      def set_conditions(query, sdb_type)
         conditions = ["['simpledb_type' = '#{sdb_type}']"]
         if query.conditions.size > 0
           conditions += query.conditions.map do |condition|
@@ -47,9 +45,43 @@ module DataMapper
             "['#{condition[1].name.to_s}' #{operator} '#{condition[2].to_s}']"
           end
         end
-        
-        results = sdb.query(domain, conditions.compact.join(' intersection '))
+        conditions
+      end
+
+      def set_sort_order(query, conditions)
+        if query.order!=nil && query.order.length > 0
+          query_object = query.order[0]
+          conditions << "['#{query_object.property.name.to_s}'> '']" #anything sorted on must be a condition
+          order = "sort '#{query_object.property.name.to_s}' #{query_object.direction==:desc ? 'DESC' : 'ASC'}"
+        else
+          order = ""
+        end
+      end
+      
+      def get_results(query, conditions, order)
+        results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}")
+        if query.limit!=nil && query.limit <= results[0].length
+          results[0] = results[0][0...query.limit]
+        else
+          sdb_continuation_key = results[1]
+          #this means there are more results to retrieve from SDB
+          while sdb_continuation_key!='' do
+            old_results = results
+            results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}", nil, sdb_continuation_key)
+            results[0] = old_results[0] + results[0]
+            sdb_continuation_key = results[1]
+          end
+        end
+        #todo use newer SDB batch get attributes
         results = results[0].map {|d| sdb.get_attributes(domain, d) }
+      end
+
+      def read_many(query)
+        sdb_type = simpledb_type(query.model)
+        
+        conditions = set_conditions(query, sdb_type)
+        order = set_sort_order(query, conditions)
+        results = get_results(query, conditions, order)
         
         Collection.new(query) do |collection|
           results.each do |result|
@@ -71,45 +103,10 @@ module DataMapper
       end
       
       def read_one(query)
-        sdb_type = simpledb_type(query.model)
-        
-        conditions = ["['simpledb_type' = '#{sdb_type}']"]
-        if query.conditions.size > 0
-          conditions += query.conditions.map do |condition|
-            operator = case condition[0]
-              when :eql then '='
-              when :not then '!='
-              when :gt then '>'
-              when :gte then '>='
-              when :lt then '<'
-              when :lte then '<='
-              else raise "Invalid query operator: #{operator.inspect}"
-            end
-            "['#{condition[1].name.to_s}' #{operator} '#{condition[2].to_s}']"
-          end
-        end
-        
-        results = sdb.query(domain, conditions.compact.join(' intersection '))
-        results = results[0].map {|d| sdb.get_attributes(domain, d) }
-        data = results[0]
-
-        unless data==nil || data.empty?
-          data = query.fields.map do |property|
-            value = data[property.field.to_s]
-            if value != nil
-              if value.size > 1
-                value.map {|v| property.typecast(v) }
-              else
-                  property.typecast(value[0])
-              end
-            else
-              property.typecast(nil)
-            end
-          end
-          
-          query.model.load(data, query)
-        end
-
+        #already has limit defined as 1 return first/only result from collection
+        results = read_many(query)
+        results.inspect #force the lazy loading to actually load
+        results[0]
       end
  
       def update(attributes, query)

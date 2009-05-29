@@ -16,14 +16,15 @@ describe DataMapper::Adapters::SimpleDBAdapter do
   end
   
   describe 'with a saved record' do
-    before(:each) { @person.save }
-    after(:each)  { @person.destroy }
+    before(:each) { @person.save; sleep(0.2) } #sleep or it might not be on SDB at when the test checks it
+    after(:each)  { @person.destroy; sleep(0.2) } #same issues for the next test could still be there
     
     it 'should get a record' do
       person = Person.get!(@person.id, @person.name)
       person.should_not be_nil
       person.wealth.should == @person.wealth
     end
+
     
     it 'should not get records of the wrong type by id' do
       Company.get(@person.id, @person.name).should == nil
@@ -52,11 +53,13 @@ describe DataMapper::Adapters::SimpleDBAdapter do
     before(:each) do
       @jeremy   = Person.create(@person_attrs.merge(:id => Time.now.to_f.to_s, :name => "Jeremy Boles", :age => 25))
       @danielle = Person.create(@person_attrs.merge(:id => Time.now.to_f.to_s, :name => nil, :age => 26, :birthday => nil))
+      sleep(0.3) #or the get calls might not have these created yet
     end
     
     after(:each) do
       @jeremy.destroy
       @danielle.destroy
+      sleep(0.2) #or might not be destroyed by the next test
     end
     
     it 'should get all records' do
@@ -77,12 +80,14 @@ describe DataMapper::Adapters::SimpleDBAdapter do
       @jeremy   = Person.create(@person_attrs.merge(:id => Time.now.to_f.to_s, :name => "Jeremy Boles", :age => 25))
       @danielle = Person.create(@person_attrs.merge(:id => Time.now.to_f.to_s, :name => "Danille Boles", :age => 26))
       @keegan   = Person.create(@person_attrs.merge(:id => Time.now.to_f.to_s, :name => "Keegan Jones", :age => 20))
+      sleep(0.4) #or the get calls might not have these created yet
     end
     
     after(:each) do
       @jeremy.destroy
       @danielle.destroy
       @keegan.destroy
+      sleep(0.4) #or might not be destroyed by the next test
     end
     
     it 'should get all records' do
@@ -144,6 +149,7 @@ describe DataMapper::Adapters::SimpleDBAdapter do
       time = Time.now
       @jeremy.created_at = time
       @jeremy.save
+      sleep(0.2)
       person = Person.get!(@jeremy.id, @jeremy.name)
       person.created_at.should == time
     end
@@ -151,6 +157,33 @@ describe DataMapper::Adapters::SimpleDBAdapter do
     it 'should handle Date' do
       person = Person.get!(@jeremy.id, @jeremy.name)
       person.birthday.should == @jeremy.birthday
+    end
+
+    it 'should handle limit one case' do
+      persons = Person.all(:limit => 1)
+      persons.length.should ==1
+    end
+
+    #it would be really slow to create over 100 entires to test this until we have batch creation
+    it 'should handle limits over the default SDB 100 results limit'
+
+    #it would be really slow to create over 100 entires to test this until we have batch creation
+    it 'should get all results over the default SDB 100 results limit'
+
+    it 'should handle ordering asc results' do
+      persons = Person.all(:order => [:age.asc])
+      persons.inspect #can't access via array until loaded? Weird
+      persons[0].should == @keegan
+      persons[1].should == @jeremy
+      persons[2].should == @danielle
+    end
+    
+    it 'should handle ordering desc results' do
+      persons = Person.all(:order => [:age.desc])
+      persons.inspect #can't access via array until loaded? Weird
+      persons[0].should == @danielle
+      persons[1].should == @jeremy
+      persons[2].should == @keegan
     end
 
     it 'should order records'
@@ -190,4 +223,5 @@ describe DataMapper::Adapters::SimpleDBAdapter do
     it 'should load descendents on parent.all' 
     it 'should raise an error if you have a column named couchdb_type'
   end
-end
+
+ end
