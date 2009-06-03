@@ -24,13 +24,12 @@ describe DataMapper::Adapters::SimpleDBAdapter do
       person.should_not be_nil
       person.wealth.should == @person.wealth
     end
-
     
     it 'should not get records of the wrong type by id' do
       Company.get(@person.id, @person.name).should == nil
       lambda { Company.get!(@person.id, @person.name) }.should raise_error(DataMapper::ObjectNotFoundError)
-    end
-    
+    end    
+
     it 'should update a record' do
       person = Person.get!(@person.id, @person.name)
       person.wealth = 100.00
@@ -46,7 +45,6 @@ describe DataMapper::Adapters::SimpleDBAdapter do
     it 'should destroy a record' do
       @person.destroy.should be_true
     end
-    
   end
 
   describe 'with nils records saved and retreived' do
@@ -65,12 +63,12 @@ describe DataMapper::Adapters::SimpleDBAdapter do
     it 'should get all records' do
       Person.all.length.should == 2
     end
-
+    
     it 'should get retrieve nil values' do
       people = Person.all(:age => 26)
       people.length.should == 1
-      people[0].name.should == ''
-      people[0].birthday.should == ''
+      people[0].name.should == nil
+      people[0].birthday.should == nil
     end
 
   end
@@ -190,7 +188,6 @@ describe DataMapper::Adapters::SimpleDBAdapter do
     it 'should get records by the like matcher'   
   end
 
-
   describe 'support migrations' do
     
     before do
@@ -224,4 +221,4 @@ describe DataMapper::Adapters::SimpleDBAdapter do
     it 'should raise an error if you have a column named couchdb_type'
   end
 
- end
+end

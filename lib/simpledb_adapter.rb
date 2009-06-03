@@ -1,9 +1,9 @@
 require 'rubygems'
 require 'dm-core'
-require 'aws_sdb'
 require 'digest/sha1'
 require 'dm-aggregates'
- 
+require 'right_aws' 
+
 module DataMapper
   module Adapters
     class SimpleDBAdapter < AbstractAdapter
@@ -39,7 +39,7 @@ module DataMapper
         Collection.new(query) do |collection|
           results.each do |result|
             data = query.fields.map do |property|
-              value = result[property.field.to_s]
+              value = result[:attributes][property.field.to_s]
               if value != nil
                 if value.size > 1
                   value.map {|v| property.typecast(v) }
@@ -113,20 +113,20 @@ module DataMapper
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
         results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}")
-        if query.limit!=nil && query.limit <= results[0].length
-          results[0] = results[0][0...query.limit]
+        if query.limit!=nil && query.limit <= results[:items].length
+          results[:items] = results[:items][0...query.limit]
         else
-          sdb_continuation_key = results[1]
+          sdb_continuation_key = results[:next_token]
           #this means there are more results to retrieve from SDB
-          while sdb_continuation_key!='' do
+          while (sdb_continuation_key!=nil) do
             old_results = results
             results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}", nil, sdb_continuation_key)
-            results[0] = old_results[0] + results[0]
-            sdb_continuation_key = results[1]
+            results[:items] = old_results[:items] + results[:items]
+            sdb_continuation_key = results[:next_token]
           end
         end
         #todo use newer SDB batch get attributes
-        results = results[0].map {|d| sdb.get_attributes(domain, d) }
+        results = results[:items].map {|d| sdb.get_attributes(domain, d) }
       end
       
       # Creates an item name for a query
@@ -169,10 +169,9 @@ module DataMapper
       
       # Returns an SimpleDB instance to work with
       def sdb
-        @sdb ||= AwsSdb::Service.new(
-                                     :access_key_id => @uri[:access_key_id],
-                                     :secret_access_key => @uri[:secret_access_key]
-                                     )
+        access_key = @uri[:access_key]
+        secret_key = @uri[:secret_key]
+        @sdb ||= RightAws::SdbInterface.new(access_key,secret_key)
         @sdb
       end
       
@@ -181,13 +180,14 @@ module DataMapper
         model.storage_name(model.repository.name)
       end
 
-      #borrowed and edited from http://github.com/edward/dm-simpledb/tree/master
+      #integrated from http://github.com/edward/dm-simpledb/tree/master
       module Migration
         # Returns whether the storage_name exists.
         # @param storage_name<String> a String defining the name of a domain
         # @return <Boolean> true if the storage exists
         def storage_exists?(storage_name)
-          sdb.list_domains[0].detect {|d| d == storage_name }!=nil
+          domains = sdb.list_domains[:domains]
+          domains.detect {|d| d == storage_name }!=nil
         end
         
         def create_model_storage(repository, model)
