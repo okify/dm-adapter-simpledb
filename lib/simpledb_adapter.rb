@@ -35,11 +35,11 @@ module DataMapper
         conditions = set_conditions(query, sdb_type)
         order = set_sort_order(query, conditions)
         results = get_results(query, conditions, order)
-        
+
         Collection.new(query) do |collection|
           results.each do |result|
             data = query.fields.map do |property|
-              value = result[:attributes][property.field.to_s]
+              value = result.values[0][property.field.to_s]
               if value != nil
                 if value.size > 1
                   value.map {|v| property.typecast(v) }
@@ -81,7 +81,7 @@ module DataMapper
 
       #sets the conditions for the SDB query
       def set_conditions(query, sdb_type)
-        conditions = ["['simpledb_type' = '#{sdb_type}']"]
+        conditions = ["simpledb_type = '#{sdb_type}'"]
         if query.conditions.size > 0
           conditions += query.conditions.map do |condition|
             operator = case condition[0]
@@ -93,7 +93,7 @@ module DataMapper
               when :lte then '<='
               else raise "Invalid query operator: #{operator.inspect}"
             end
-            "['#{condition[1].name.to_s}' #{operator} '#{condition[2].to_s}']"
+            "#{condition[1].name.to_s} #{operator} '#{condition[2].to_s}'"
           end
         end
         conditions
@@ -103,8 +103,9 @@ module DataMapper
       def set_sort_order(query, conditions)
         if query.order!=nil && query.order.length > 0
           query_object = query.order[0]
-          conditions << "['#{query_object.property.name.to_s}'> '']" #anything sorted on must be a condition
-          order = "sort '#{query_object.property.name.to_s}' #{query_object.direction==:desc ? 'DESC' : 'ASC'}"
+          #anything sorted on must be a condition for SDB
+          conditions << "#{query_object.property.name.to_s} > ''" 
+          order = "order by #{query_object.property.name.to_s} #{query_object.direction==:desc ? 'desc' : 'asc'}"
         else
           order = ""
         end
@@ -112,21 +113,14 @@ module DataMapper
       
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
-        results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}")
-        if query.limit!=nil && query.limit <= results[:items].length
-          results[:items] = results[:items][0...query.limit]
-        else
-          sdb_continuation_key = results[:next_token]
-          #this means there are more results to retrieve from SDB
-          while (sdb_continuation_key!=nil) do
-            old_results = results
-            results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}", nil, sdb_continuation_key)
-            results[:items] = old_results[:items] + results[:items]
-            sdb_continuation_key = results[:next_token]
-          end
-        end
-        #todo use newer SDB batch get attributes
-        results = results[:items].map {|d| sdb.get_attributes(domain, d) }
+        
+        #TODO add support for continuation keys (again)
+        query_call = "select * from #{domain} "
+        query_call = query_call + "where #{conditions.compact.join(' and ')}" if conditions.length > 0
+        query_call = query_call + " #{order}"
+        query_call = query_call + " limit #{query.limit}" if query.limit!=nil
+        results = sdb.select(query_call)
+        results = results[:items]
       end
       
       # Creates an item name for a query

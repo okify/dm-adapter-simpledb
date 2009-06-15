@@ -3,6 +3,7 @@ require 'spec'
 require 'spec/rake/spectask'
 require 'pathname'
 require "rake/gempackagetask"
+require 'devver'
 
 ROOT = Pathname(__FILE__).dirname.expand_path
 require ROOT + 'lib/simpledb_adapter'
@@ -24,6 +25,14 @@ Spec::Rake::SpecTask.new(:spec) do |t|
   rescue Exception
     # rcov not installed
   end
+end
+
+desc 'Run specifications without Rcov'
+Spec::Rake::SpecTask.new(:spec_no_rcov) do |t|
+  if File.exists?('spec/spec.opts')
+    t.spec_opts << '--options' << 'spec/spec.opts'
+  end
+  t.spec_files = Pathname.glob((ROOT + 'spec/**/*_spec.rb').to_s)
 end
 
 
