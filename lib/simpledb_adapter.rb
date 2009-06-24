@@ -32,8 +32,7 @@ module DataMapper
       def read_many(query)
         sdb_type = simpledb_type(query.model)
         
-        conditions = set_conditions(query, sdb_type)
-        order = set_sort_order(query, conditions)
+        conditions, order = set_conditions_and_sort_order(query, sdb_type)
         results = get_results(query, conditions, order)
 
         Collection.new(query) do |collection|
@@ -79,51 +78,48 @@ module DataMapper
         @uri[:domain]
       end
 
-      #sets the conditions for the SDB query
-      def set_conditions(query, sdb_type)
+      #sets the conditions and order for the SDB query
+      def set_conditions_and_sort_order(query, sdb_type)
         conditions = ["simpledb_type = '#{sdb_type}'"]
-        if query.conditions.size > 0
-          conditions += query.conditions.map do |condition|
-            operator = case condition[0]
-              when :eql then '='
-              when :not then '!='
-              when :gt then '>'
-              when :gte then '>='
-              when :lt then '<'
-              when :lte then '<='
-              else raise "Invalid query operator: #{operator.inspect}"
-            end
-            "#{condition[1].name.to_s} #{operator} '#{condition[2].to_s}'"
-          end
-        end
-        conditions
-      end
+        # look for query.order.first and insure in conditions
+        # raise if order if greater than 1
 
-      #adds sort information to SDB query
-      def set_sort_order(query, conditions)
-        if query.order!=nil && query.order.length > 0
+        if query.order && query.order.length > 0
           query_object = query.order[0]
           #anything sorted on must be a condition for SDB
-          conditions << "#{query_object.property.name.to_s} > ''" 
-          order = "order by #{query_object.property.name.to_s} #{query_object.direction==:desc ? 'desc' : 'asc'}"
+          conditions << "#{query_object.property.name} IS NOT NULL" 
+          order = "order by #{query_object.property.name} #{query_object.direction}"
         else
           order = ""
         end
+
+        query.conditions.each do |operator, attribute, value|
+          operator = case operator
+                     when :eql then '='
+                     when :not then '!='
+                     when :gt then '>'
+                     when :gte then '>='
+                     when :lt then '<'
+                     when :lte then '<='
+                     else raise "Invalid query operator: #{operator.inspect}" 
+                     end
+          conditions << "#{attribute.name} #{operator} '#{value}'"
+        end
+        [conditions,order]
       end
       
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
-        
         query_call = "select * from #{domain} "
-        query_call = query_call + "where #{conditions.compact.join(' and ')}" if conditions.length > 0
-        query_call = query_call + " #{order}"
+        query_call << "where #{conditions.compact.join(' and ')}" if conditions.length > 0
+        query_call << " #{order}"
         if query.limit!=nil
           query_limit = query.limit
-          query_call = query_call + " limit #{query.limit}" 
+          query_call << " limit #{query.limit}" 
         else
           #on large items force the max limit
           query_limit = 999999999 #TODO hack for query.limit being nil
-          query_call = query_call + " limit 2500"
+          query_call << " limit 2500"
         end
         results = sdb.select(query_call)
         

@@ -1,5 +1,7 @@
 = dm-adapter-simpledb
 
+This is the new version of the adapter now based on Right_Aws which has helped a lot with performance. The rest of this FAQ is a bit dated...
+
 Written by Jeremy Boles
 Contributers Edward Ocampo-Gooding, Dan Mayer
 
