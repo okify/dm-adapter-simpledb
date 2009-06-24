@@ -114,13 +114,28 @@ module DataMapper
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
         
-        #TODO add support for continuation keys (again)
         query_call = "select * from #{domain} "
         query_call = query_call + "where #{conditions.compact.join(' and ')}" if conditions.length > 0
         query_call = query_call + " #{order}"
-        query_call = query_call + " limit #{query.limit}" if query.limit!=nil
+        if query.limit!=nil
+          query_limit = query.limit
+          query_call = query_call + " limit #{query.limit}" 
+        else
+          #on large items force the max limit
+          query_limit = 999999999 #TODO hack for query.limit being nil
+          query_call = query_call + " limit 2500"
+        end
         results = sdb.select(query_call)
-        results = results[:items]
+        
+        sdb_continuation_key = results[:next_token]
+        while (sdb_continuation_key!=nil && results[:items].length < query_limit)do
+          old_results = results
+          results = sdb.select(query_call, sdb_continuation_key)
+          results[:items] = old_results[:items] + results[:items]
+          sdb_continuation_key = results[:next_token]
+        end
+
+        results = results[:items][0...query_limit]
       end
       
       # Creates an item name for a query
