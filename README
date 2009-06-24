@@ -1,5 +1,10 @@
 = dm-adapter-simpledb
 
+This branch is currently getting dated most of the work is going on in the right_aws branch
+http://github.com/danmayer/dm-adapter-simpledb/tree/right_aws
+
+once it is fully stable it will be merged over this older, but stable master.
+
 Written by Jeremy Boles
 Contributers Edward Ocampo-Gooding, Dan Mayer
 
