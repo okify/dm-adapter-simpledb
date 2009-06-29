@@ -119,7 +119,7 @@ module DataMapper
         else
           #on large items force the max limit
           query_limit = 999999999 #TODO hack for query.limit being nil
-          query_call << " limit 2500"
+          #query_call << " limit 2500" #this doesn't work with continuation keys as it halts at the limit passed not just a limit per query.
         end
         results = sdb.select(query_call)
         
