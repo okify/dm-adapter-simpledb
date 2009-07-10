@@ -3,6 +3,7 @@ require 'spec'
 require 'spec/rake/spectask'
 require 'pathname'
 require "rake/gempackagetask"
+load 'tasks/devver.rake'
 
 ROOT = Pathname(__FILE__).dirname.expand_path
 require ROOT + 'lib/simpledb_adapter'
@@ -26,6 +27,67 @@ Spec::Rake::SpecTask.new(:spec) do |t|
   end
 end
 
+desc 'Run specifications without Rcov'
+Spec::Rake::SpecTask.new(:spec_no_rcov) do |t|
+  if File.exists?('spec/spec.opts')
+    t.spec_opts << '--options' << 'spec/spec.opts'
+  end
+  t.spec_files = Pathname.glob((ROOT + 'spec/**/*_spec.rb').to_s)
+end
+
+def get_keys
+  access_key = ENV['AMAZON_ACCESS_KEY_ID']
+  secret_key = ENV['AMAZON_SECRET_ACCESS_KEY']
+  
+  #For those that don't like to mess up their ENV
+  if access_key==nil && secret_key==nil
+    lines = File.readlines(File.join(File.dirname(__FILE__),'aws_config'))
+    access_key = lines[0].strip
+    secret_key = lines[1].strip
+  end
+
+  [access_key, secret_key]
+end
+
+def setup_dm(access_key, secret_key)
+  DataMapper.setup(:default, {
+                     :adapter => 'simpledb',
+                     :access_key => access_key,
+                     :secret_key => secret_key,
+                     :domain => 'missionaries'
+                   })
+end
+
+desc 'Create test storage model'
+task :create_default_storage do
+
+  access_key, secret_key = get_keys
+  setup_dm(access_key, secret_key)
+
+  class Person
+    include DataMapper::Resource    
+    property :id,         String, :key => true
+  end
+  
+  Person.auto_migrate!
+end
+
+desc 'Destroy test storage model'
+task :destroy_default_storage do
+
+  access_key, secret_key = get_keys
+  setup_dm(access_key, secret_key)
+
+  class Person
+    include DataMapper::Resource    
+    property :id,         String, :key => true
+  end
+  
+  @adapter = repository(:default).adapter
+  ENV['destroy']='true'
+  @adapter.destroy_model_storage(repository(:default), Person)
+  ENV['destroy']='false'
+end
 
 spec = Gem::Specification.new do |s|
   s.name     = "dm-adapter-simpledb"

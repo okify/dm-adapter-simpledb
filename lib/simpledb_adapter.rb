@@ -1,12 +1,18 @@
 require 'rubygems'
 require 'dm-core'
-require 'aws_sdb'
 require 'digest/sha1'
 require 'dm-aggregates'
- 
+require 'right_aws' 
+
 module DataMapper
   module Adapters
     class SimpleDBAdapter < AbstractAdapter
+
+      def initialize(name, opts = {})
+        super                                      
+
+        @opts = opts
+      end
 
       def create(resources)
         created = 0
@@ -32,14 +38,13 @@ module DataMapper
       def read_many(query)
         sdb_type = simpledb_type(query.model)
         
-        conditions = set_conditions(query, sdb_type)
-        order = set_sort_order(query, conditions)
+        conditions, order = set_conditions_and_sort_order(query, sdb_type)
         results = get_results(query, conditions, order)
-        
+
         Collection.new(query) do |collection|
           results.each do |result|
             data = query.fields.map do |property|
-              value = result[property.field.to_s]
+              value = result.values[0][property.field.to_s]
               if value != nil
                 if value.size > 1
                   value.map {|v| property.typecast(v) }
@@ -79,54 +84,60 @@ module DataMapper
         @uri[:domain]
       end
 
-      #sets the conditions for the SDB query
-      def set_conditions(query, sdb_type)
-        conditions = ["['simpledb_type' = '#{sdb_type}']"]
-        if query.conditions.size > 0
-          conditions += query.conditions.map do |condition|
-            operator = case condition[0]
-              when :eql then '='
-              when :not then '!='
-              when :gt then '>'
-              when :gte then '>='
-              when :lt then '<'
-              when :lte then '<='
-              else raise "Invalid query operator: #{operator.inspect}"
-            end
-            "['#{condition[1].name.to_s}' #{operator} '#{condition[2].to_s}']"
-          end
-        end
-        conditions
-      end
+      #sets the conditions and order for the SDB query
+      def set_conditions_and_sort_order(query, sdb_type)
+        conditions = ["simpledb_type = '#{sdb_type}'"]
+        # look for query.order.first and insure in conditions
+        # raise if order if greater than 1
 
-      #adds sort information to SDB query
-      def set_sort_order(query, conditions)
-        if query.order!=nil && query.order.length > 0
+        if query.order && query.order.length > 0
           query_object = query.order[0]
-          conditions << "['#{query_object.property.name.to_s}'> '']" #anything sorted on must be a condition
-          order = "sort '#{query_object.property.name.to_s}' #{query_object.direction==:desc ? 'DESC' : 'ASC'}"
+          #anything sorted on must be a condition for SDB
+          conditions << "#{query_object.property.name} IS NOT NULL" 
+          order = "order by #{query_object.property.name} #{query_object.direction}"
         else
           order = ""
         end
+
+        query.conditions.each do |operator, attribute, value|
+          operator = case operator
+                     when :eql then '='
+                     when :not then '!='
+                     when :gt then '>'
+                     when :gte then '>='
+                     when :lt then '<'
+                     when :lte then '<='
+                     else raise "Invalid query operator: #{operator.inspect}" 
+                     end
+          conditions << "#{attribute.name} #{operator} '#{value}'"
+        end
+        [conditions,order]
       end
       
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
-        results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}")
-        if query.limit!=nil && query.limit <= results[0].length
-          results[0] = results[0][0...query.limit]
+        query_call = "select * from #{domain} "
+        query_call << "where #{conditions.compact.join(' and ')}" if conditions.length > 0
+        query_call << " #{order}"
+        if query.limit!=nil
+          query_limit = query.limit
+          query_call << " limit #{query.limit}" 
         else
-          sdb_continuation_key = results[1]
-          #this means there are more results to retrieve from SDB
-          while sdb_continuation_key!='' do
-            old_results = results
-            results = sdb.query(domain, "#{conditions.compact.join(' intersection ')} #{order}", nil, sdb_continuation_key)
-            results[0] = old_results[0] + results[0]
-            sdb_continuation_key = results[1]
-          end
+          #on large items force the max limit
+          query_limit = 999999999 #TODO hack for query.limit being nil
+          #query_call << " limit 2500" #this doesn't work with continuation keys as it halts at the limit passed not just a limit per query.
         end
-        #todo use newer SDB batch get attributes
-        results = results[0].map {|d| sdb.get_attributes(domain, d) }
+        results = sdb.select(query_call)
+        
+        sdb_continuation_key = results[:next_token]
+        while (sdb_continuation_key!=nil && results[:items].length < query_limit)do
+          old_results = results
+          results = sdb.select(query_call, sdb_continuation_key)
+          results[:items] = old_results[:items] + results[:items]
+          sdb_continuation_key = results[:next_token]
+        end
+
+        results = results[:items][0...query_limit]
       end
       
       # Creates an item name for a query
@@ -169,10 +180,9 @@ module DataMapper
       
       # Returns an SimpleDB instance to work with
       def sdb
-        @sdb ||= AwsSdb::Service.new(
-                                     :access_key_id => @uri[:access_key_id],
-                                     :secret_access_key => @uri[:secret_access_key]
-                                     )
+        access_key = @uri[:access_key]
+        secret_key = @uri[:secret_key]
+        @sdb ||= RightAws::SdbInterface.new(access_key,secret_key,@opts)
         @sdb
       end
       
@@ -181,13 +191,14 @@ module DataMapper
         model.storage_name(model.repository.name)
       end
 
-      #borrowed and edited from http://github.com/edward/dm-simpledb/tree/master
+      #integrated from http://github.com/edward/dm-simpledb/tree/master
       module Migration
         # Returns whether the storage_name exists.
         # @param storage_name<String> a String defining the name of a domain
         # @return <Boolean> true if the storage exists
         def storage_exists?(storage_name)
-          sdb.list_domains[0].detect {|d| d == storage_name }!=nil
+          domains = sdb.list_domains[:domains]
+          domains.detect {|d| d == storage_name }!=nil
         end
         
         def create_model_storage(repository, model)
