@@ -1,6 +1,8 @@
 require 'pathname'
 require Pathname(__FILE__).dirname.parent.expand_path + 'lib/simpledb_adapter'
 require 'ruby-debug'
+require 'logger'
+require 'fileutils'
 
 access_key = ENV['AMAZON_ACCESS_KEY_ID']
 secret_key = ENV['AMAZON_SECRET_ACCESS_KEY']
@@ -12,9 +14,15 @@ if access_key==nil && secret_key==nil
   secret_key = lines[1].strip
 end
 
+FileUtils.mkdir_p('log') unless File.exists?('log')
+log_file = "log/dm-sdb.log"
+FileUtils.touch(log_file)
+log = Logger.new(log_file)
+
 DataMapper.setup(:default, {
   :adapter => 'simpledb',
   :access_key => access_key,
   :secret_key => secret_key,
-  :domain => 'missionaries'
+  :domain => 'missionaries',
+  :logger => log
 })

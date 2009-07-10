@@ -8,6 +8,12 @@ module DataMapper
   module Adapters
     class SimpleDBAdapter < AbstractAdapter
 
+      def initialize(name, opts = {})
+        super                                      
+
+        @opts = opts
+      end
+
       def create(resources)
         created = 0
         resources.each do |resource|
@@ -176,7 +182,7 @@ module DataMapper
       def sdb
         access_key = @uri[:access_key]
         secret_key = @uri[:secret_key]
-        @sdb ||= RightAws::SdbInterface.new(access_key,secret_key)
+        @sdb ||= RightAws::SdbInterface.new(access_key,secret_key,@opts)
         @sdb
       end
       
