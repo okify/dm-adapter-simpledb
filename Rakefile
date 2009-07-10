@@ -3,7 +3,7 @@ require 'spec'
 require 'spec/rake/spectask'
 require 'pathname'
 require "rake/gempackagetask"
-require './devver'
+load 'tasks/devver.rake'
 
 ROOT = Pathname(__FILE__).dirname.expand_path
 require ROOT + 'lib/simpledb_adapter'
