@@ -94,5 +94,8 @@ describe 'with multiple records saved' do
     people.length.should == 2
   end
 
-  it 'should get records by the like matcher'   
+  it 'should get records by the like matcher' do
+    people = Person.all(:name.like => 'Jeremy%')
+    people.should == [@jeremy]
+  end
 end

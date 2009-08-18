@@ -107,6 +107,7 @@ module DataMapper
                      when :gte then '>='
                      when :lt then '<'
                      when :lte then '<='
+                     when :like then 'like'
                      else raise "Invalid query operator: #{operator.inspect}" 
                      end
           conditions << "#{attribute.name} #{operator} '#{value}'"
