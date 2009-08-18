@@ -10,14 +10,14 @@ describe 'with multiple records saved' do
     property :hobbies,     SdbArray
   end
   
-  before(:all) do
+  before(:each) do
     @jeremy   = Hobbyist.create(:name => "Jeremy Boles",  :hobbies => ["biking", "diving", "chess"])
     @danielle = Hobbyist.create(:name => "Danille Boles", :hobbies => ["swimming", "diving"])
     @keegan   = Hobbyist.create(:name => "Keegan Jones",  :hobbies => ["painting"])
     sleep(0.4)
   end
   
-  after(:all) do
+  after(:each) do
     @jeremy.destroy
     @danielle.destroy
     @keegan.destroy
@@ -27,6 +27,24 @@ describe 'with multiple records saved' do
   it 'should store hobbies as array' do
     person = Hobbyist.first(:name => 'Jeremy Boles')
     person.hobbies.sort.should == ["biking", "diving", "chess"].sort
+  end
+  
+  it 'should allow updates to array' do
+    person = Hobbyist.first(:name => 'Jeremy Boles')
+    person.hobbies = ["lego"]
+    person.save
+    
+    lego_person = Hobbyist.first(:name => 'Jeremy Boles')
+    lego_person.hobbies.should == "lego"
+  end
+  
+  it 'should allow deletion of array' do
+    person = Hobbyist.first(:name => 'Jeremy Boles')
+    person.hobbies = nil
+    person.save
+    
+    lego_person = Hobbyist.first(:name => 'Jeremy Boles')
+    lego_person.hobbies.should == nil
   end
   
   it 'should find all records with diving hobby' do
