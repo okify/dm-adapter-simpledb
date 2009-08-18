@@ -4,7 +4,7 @@ module DataMapper
       primitive Text
 
       def self.load(value, property)
-       value
+        value
       end
 
       def self.dump(value, property)
@@ -12,7 +12,7 @@ module DataMapper
       end
 
       def self.typecast(value, property)
-       value
+        value
       end
     end 
   end
