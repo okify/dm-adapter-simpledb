@@ -108,6 +108,10 @@ module DataMapper
                      when :lt then '<'
                      when :lte then '<='
                      when :like then 'like'
+                     when :in 
+                       values = value.collect{|v| "'#{v}'"}
+                       conditions << "#{attribute.name} in (#{values.join(',')})"
+                       next
                      else raise "Invalid query operator: #{operator.inspect}" 
                      end
           conditions << "#{attribute.name} #{operator} '#{value}'"

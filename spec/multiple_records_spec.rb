@@ -98,4 +98,11 @@ describe 'with multiple records saved' do
     people = Person.all(:name.like => 'Jeremy%')
     people.should == [@jeremy]
   end
+  
+  it 'should get records by the in matcher' do
+    people = Person.all(:id.in => [@jeremy.id, @danielle.id])
+    people.should include(@jeremy)
+    people.should include(@danielle)
+    people.should_not include (@keegan)
+  end
 end
