@@ -77,6 +77,11 @@ module DataMapper
         updated
       end
       
+      def query(query)
+        records = sdb.select(query)[:items]
+        records.collect{|x| x.values[0]}
+      end
+      
     private
 
       # Returns the domain for the model

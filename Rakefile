@@ -100,6 +100,7 @@ spec = Gem::Specification.new do |s|
   s.has_rdoc = true
   s.authors  = ["Jeremy Boles"]
   s.files    = ["lib/simpledb_adapter.rb", 
+    "lib/simpledb_adapter/sdb_array.rb",
 		"README", 
 		"Rakefile", 
 		"dm-adapter-simpledb.gemspec"]
