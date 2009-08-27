@@ -103,6 +103,6 @@ describe 'with multiple records saved' do
     people = Person.all(:id.in => [@jeremy.id, @danielle.id])
     people.should include(@jeremy)
     people.should include(@danielle)
-    people.should_not include (@keegan)
+    people.should_not include(@keegan)
   end
 end
