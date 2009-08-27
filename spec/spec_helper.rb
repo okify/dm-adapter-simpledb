@@ -6,6 +6,7 @@ require 'fileutils'
 
 access_key = ENV['AMAZON_ACCESS_KEY_ID']
 secret_key = ENV['AMAZON_SECRET_ACCESS_KEY']
+DataMapper::Logger.new(STDOUT, :debug)
 
 #For those that don't like to mess up their ENV
 if access_key==nil && secret_key==nil

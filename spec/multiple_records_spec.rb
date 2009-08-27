@@ -99,10 +99,14 @@ describe 'with multiple records saved' do
     people.should == [@jeremy]
   end
   
-  it 'should get records by the in matcher' do
+  it 'should get records by the IN matcher' do
     people = Person.all(:id.in => [@jeremy.id, @danielle.id])
     people.should include(@jeremy)
     people.should include(@danielle)
     people.should_not include(@keegan)
+  end
+  it "should get no records if IN array is empty" do
+    people = Person.all(:id.in => [])
+    people.should be_empty
   end
 end

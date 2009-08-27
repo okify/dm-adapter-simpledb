@@ -126,8 +126,9 @@ module DataMapper
                      when :lte then '<='
                      when :like then 'like'
                      when :in 
-                       values = value.collect{|v| "'#{v}'"}
-                       conditions << "#{attribute.name} in (#{values.join(',')})"
+                       values = value.collect{|v| "'#{v}'"}.join(',')
+                       values = "'__NULL__'" if values.empty?                       
+                       conditions << "#{attribute.name} in (#{values})"
                        next
                      else raise "Invalid query operator: #{operator.inspect}" 
                      end
@@ -149,6 +150,7 @@ module DataMapper
           query_limit = 999999999 #TODO hack for query.limit being nil
           #query_call << " limit 2500" #this doesn't work with continuation keys as it halts at the limit passed not just a limit per query.
         end
+        DataMapper.logger.info(query_call)
         results = sdb.select(query_call)
         
         sdb_continuation_key = results[:next_token]
