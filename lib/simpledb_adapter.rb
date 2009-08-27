@@ -82,6 +82,18 @@ module DataMapper
         records.collect{|x| x.values[0]}
       end
       
+      def aggregate(query)
+        raise ArgumentError.new("Only count is supported") unless (query.fields.first.operator == :count)
+        sdb_type = simpledb_type(query.model)
+        conditions, order = set_conditions_and_sort_order(query, sdb_type)
+
+        query_call = "select count(*) from #{domain} "
+        query_call << "where #{conditions.compact.join(' and ')}" if conditions.length > 0
+
+        results = sdb.select(query_call)
+        [results[:items][0]["Domain"]["Count"].first.to_i]
+      end
+      
     private
 
       # Returns the domain for the model

@@ -88,5 +88,16 @@ describe DataMapper::Adapters::SimpleDBAdapter do
         end.should raise_error(RightAws::AwsError)
       end
     end
+    describe 'aggregate' do
+      it "should respond to count(*)" do
+        Friend.count.should == 1
+      end
+      it "should not respond to any other aggregates" do
+        lambda { Friend.min(:age) }.should raise_error(ArgumentError)
+        lambda { Friend.max(:age) }.should raise_error(ArgumentError)
+        lambda { Friend.avg(:age) }.should raise_error(ArgumentError)
+        lambda { Friend.sum(:age) }.should raise_error(ArgumentError)
+      end
+    end
   end
 end
