@@ -16,22 +16,26 @@ module DataMapper
 
       def create(resources)
         created = 0
-        resources.each do |resource|
-          item_name = item_name_for_resource(resource)
-          sdb_type = simpledb_type(resource.model)
-          attributes = resource.attributes.merge(:simpledb_type => sdb_type)
-          sdb.put_attributes(domain, item_name, attributes)
-          created += 1
-        end
+        time = Benchmark.realtime do 
+          resources.each do |resource|
+            item_name = item_name_for_resource(resource)
+            sdb_type = simpledb_type(resource.model)
+            attributes = resource.attributes.merge(:simpledb_type => sdb_type)
+            sdb.put_attributes(domain, item_name, attributes)
+            created += 1
+          end
+        end; DataMapper.logger.debug(format_log_entry("(#{created}) INSERT #{resources.inspect}", time))
         created
       end
       
       def delete(query)
         deleted = 0
-        item_name = item_name_for_query(query)
-        sdb.delete_attributes(domain, item_name)
-        deleted += 1
-        raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(query)
+        time = Benchmark.realtime do
+          item_name = item_name_for_query(query)
+          sdb.delete_attributes(domain, item_name)
+          deleted += 1
+          raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(query)
+        end; DataMapper.logger.debug(format_log_entry("(#{deleted}) DELETE #{query.conditions.inspect}", time))
         deleted
       end
 
@@ -69,16 +73,21 @@ module DataMapper
  
       def update(attributes, query)
         updated = 0
-        item_name = item_name_for_query(query)
-        attributes = attributes.to_a.map {|a| [a.first.name.to_s, a.last]}.to_hash
-        sdb.put_attributes(domain, item_name, attributes, true)
-        updated += 1
-        raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(query)
+        time = Benchmark.realtime do
+          item_name = item_name_for_query(query)
+          attributes = attributes.to_a.map {|a| [a.first.name.to_s, a.last]}.to_hash
+          sdb.put_attributes(domain, item_name, attributes, true)
+          updated += 1
+          raise NotImplementedError.new('Only :eql on update at the moment') if not_eql_query?(query)
+        end; DataMapper.logger.debug(format_log_entry("UPDATE #{query.conditions.inspect} (#{updated} times)", time))
         updated
       end
       
       def query(query)
-        records = sdb.select(query)[:items]
+        records = nil
+        time = Benchmark.realtime do
+          records = sdb.select(query)[:items]
+        end; DataMapper.logger.debug(format_log_entry(query, time))
         records.collect{|x| x.values[0]}
       end
       
@@ -87,8 +96,8 @@ module DataMapper
         sdb_type = simpledb_type(query.model)
         conditions, order = set_conditions_and_sort_order(query, sdb_type)
 
-        query_call = "select count(*) from #{domain} "
-        query_call << "where #{conditions.compact.join(' and ')}" if conditions.length > 0
+        query_call = "SELECT COUNT(*) FROM #{domain} "
+        query_call << "WHERE #{conditions.compact.join(' AND ')}" if conditions.length > 0
         results = nil
         time = Benchmark.realtime do
           results = sdb.select(query_call)
@@ -113,7 +122,7 @@ module DataMapper
           query_object = query.order[0]
           #anything sorted on must be a condition for SDB
           conditions << "#{query_object.property.name} IS NOT NULL" 
-          order = "order by #{query_object.property.name} #{query_object.direction}"
+          order = "ORDER BY #{query_object.property.name} #{query_object.direction}"
         else
           order = ""
         end
@@ -130,7 +139,7 @@ module DataMapper
                      when :in 
                        values = value.collect{|v| "'#{v}'"}.join(',')
                        values = "'__NULL__'" if values.empty?                       
-                       conditions << "#{attribute.name} in (#{values})"
+                       conditions << "#{attribute.name} IN (#{values})"
                        next
                      else raise "Invalid query operator: #{operator.inspect}" 
                      end
@@ -141,12 +150,12 @@ module DataMapper
       
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
-        query_call = "select * from #{domain} "
-        query_call << "where #{conditions.compact.join(' and ')}" if conditions.length > 0
+        query_call = "SELECT * FROM #{domain} "
+        query_call << "WHERE #{conditions.compact.join(' AND ')}" if conditions.length > 0
         query_call << " #{order}"
         if query.limit!=nil
           query_limit = query.limit
-          query_call << " limit #{query.limit}" 
+          query_call << " LIMIT #{query.limit}" 
         else
           #on large items force the max limit
           query_limit = 999999999 #TODO hack for query.limit being nil
