@@ -96,13 +96,13 @@ module DataMapper
         sdb_type = simpledb_type(query.model)
         conditions, order = set_conditions_and_sort_order(query, sdb_type)
 
-        query_call = "SELECT COUNT(*) FROM #{domain} "
+        query_call = "SELECT count(*) FROM #{domain} "
         query_call << "WHERE #{conditions.compact.join(' AND ')}" if conditions.length > 0
         results = nil
         time = Benchmark.realtime do
           results = sdb.select(query_call)
         end; DataMapper.logger.debug(format_log_entry(query_call, time))
-        [results[:items][0]["Domain"]["Count"].first.to_i]
+        [results[:items][0].values.first["Count"].first.to_i]
       end
       
     private
