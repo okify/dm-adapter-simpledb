@@ -89,8 +89,10 @@ module DataMapper
 
         query_call = "select count(*) from #{domain} "
         query_call << "where #{conditions.compact.join(' and ')}" if conditions.length > 0
-
-        results = sdb.select(query_call)
+        results = nil
+        time = Benchmark.realtime do
+          results = sdb.select(query_call)
+        end; DataMapper.logger.debug(format_log_entry(query_call, time))
         [results[:items][0]["Domain"]["Count"].first.to_i]
       end
       
@@ -150,16 +152,18 @@ module DataMapper
           query_limit = 999999999 #TODO hack for query.limit being nil
           #query_call << " limit 2500" #this doesn't work with continuation keys as it halts at the limit passed not just a limit per query.
         end
-        DataMapper.logger.info(query_call)
-        results = sdb.select(query_call)
+        results = nil
+        time = Benchmark.realtime do
+          results = sdb.select(query_call)
         
-        sdb_continuation_key = results[:next_token]
-        while (sdb_continuation_key!=nil && results[:items].length < query_limit)do
-          old_results = results
-          results = sdb.select(query_call, sdb_continuation_key)
-          results[:items] = old_results[:items] + results[:items]
           sdb_continuation_key = results[:next_token]
-        end
+          while (sdb_continuation_key!=nil && results[:items].length < query_limit)do
+            old_results = results
+            results = sdb.select(query_call, sdb_continuation_key)
+            results[:items] = old_results[:items] + results[:items]
+            sdb_continuation_key = results[:next_token]
+          end
+        end; DataMapper.logger.debug(format_log_entry(query_call, time))
 
         results = results[:items][0...query_limit]
       end
@@ -213,6 +217,10 @@ module DataMapper
       # Returns a string so we know what type of
       def simpledb_type(model)
         model.storage_name(model.repository.name)
+      end
+
+      def format_log_entry(query, ms = 0)
+        'SDB (%.1fs)  %s' % [ms, query.squeeze(' ')]
       end
 
       #integrated from http://github.com/edward/dm-simpledb/tree/master
