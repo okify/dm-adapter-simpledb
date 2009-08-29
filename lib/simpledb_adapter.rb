@@ -21,6 +21,7 @@ module DataMapper
             item_name = item_name_for_resource(resource)
             sdb_type = simpledb_type(resource.model)
             attributes = resource.attributes.merge(:simpledb_type => sdb_type)
+            attributes.reject!{|key,value| value.nil? || value == '' || value == []}
             sdb.put_attributes(domain, item_name, attributes)
             created += 1
           end
@@ -129,8 +130,20 @@ module DataMapper
 
         query.conditions.each do |operator, attribute, value|
           operator = case operator
-                     when :eql then '='
-                     when :not then '!='
+                     when :eql
+                        if value.nil?
+                          conditions << "#{attribute.name} IS NULL"
+                          next
+                        else
+                          '='
+                        end
+                     when :not
+                       if value.nil?
+                         conditions << "#{attribute.name} IS NOT NULL"
+                         next
+                       else
+                         '!='
+                       end
                      when :gt then '>'
                      when :gte then '>='
                      when :lt then '<'
