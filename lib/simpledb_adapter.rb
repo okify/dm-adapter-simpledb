@@ -84,12 +84,8 @@ module DataMapper
         updated
       end
       
-      def query(query)
-        records = nil
-        time = Benchmark.realtime do
-          records = sdb.select(query)[:items]
-        end; DataMapper.logger.debug(format_log_entry(query, time))
-        records.collect{|x| x.values[0]}
+      def query(query_call, query_limit = 999999999)
+        select(query_call, query_limit).collect{|x| x.values[0]}
       end
       
       def aggregate(query)
@@ -161,6 +157,23 @@ module DataMapper
         [conditions,order]
       end
       
+      def select(query_call, query_limit)
+        results = nil
+        time = Benchmark.realtime do
+          results = sdb.select(query_call)
+        
+          sdb_continuation_key = results[:next_token]
+          while (sdb_continuation_key!=nil && results[:items].length < query_limit)do
+            old_results = results
+            results = sdb.select(query_call, sdb_continuation_key)
+            results[:items] += old_results[:items]
+            sdb_continuation_key = results[:next_token]
+          end
+        end; DataMapper.logger.debug(format_log_entry(query_call, time))
+
+        results[:items][0...query_limit]
+      end
+      
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
         query_call = "SELECT * FROM #{domain} "
@@ -174,20 +187,7 @@ module DataMapper
           query_limit = 999999999 #TODO hack for query.limit being nil
           #query_call << " limit 2500" #this doesn't work with continuation keys as it halts at the limit passed not just a limit per query.
         end
-        results = nil
-        time = Benchmark.realtime do
-          results = sdb.select(query_call)
-        
-          sdb_continuation_key = results[:next_token]
-          while (sdb_continuation_key!=nil && results[:items].length < query_limit)do
-            old_results = results
-            results = sdb.select(query_call, sdb_continuation_key)
-            results[:items] = old_results[:items] + results[:items]
-            sdb_continuation_key = results[:next_token]
-          end
-        end; DataMapper.logger.debug(format_log_entry(query_call, time))
-
-        results = results[:items][0...query_limit]
+        select(query_call, query_limit)
       end
       
       # Creates an item name for a query
