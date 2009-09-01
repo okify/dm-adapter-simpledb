@@ -158,20 +158,17 @@ module DataMapper
       end
       
       def select(query_call, query_limit)
-        results = nil
+        items = []
         time = Benchmark.realtime do
-          results = sdb.select(query_call)
-        
-          sdb_continuation_key = results[:next_token]
-          while (sdb_continuation_key!=nil && results[:items].length < query_limit)do
-            old_results = results
-            results = sdb.select(query_call, sdb_continuation_key)
-            results[:items] += old_results[:items]
+          sdb_continuation_key = nil
+          while (results = sdb.select(query_call, sdb_continuation_key)) do
             sdb_continuation_key = results[:next_token]
+            items += results[:items]
+            break if items.length > query_limit
+            break if sdb_continuation_key.nil?
           end
         end; DataMapper.logger.debug(format_log_entry(query_call, time))
-
-        results[:items][0...query_limit]
+        items[0...query_limit]
       end
       
       #gets all results or proper number of results depending on the :limit
