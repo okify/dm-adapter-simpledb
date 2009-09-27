@@ -8,6 +8,10 @@ module DataMapper
   module Adapters
     class SimpleDBAdapter < AbstractAdapter
 
+      #right_aws calls Array(your_string) on all string properties, which splits on \n and then sorts your string in a random order
+      #This is a value that can be used to replace \n before storing a string and get it back coming out of SDB
+      NEWLINE_REPLACE = "[[[NEWLINE]]]"
+
       def initialize(name, opts = {})
         super                                      
 
@@ -20,6 +24,9 @@ module DataMapper
           item_name = item_name_for_resource(resource)
           sdb_type = simpledb_type(resource.model)
           attributes = resource.attributes.merge(:simpledb_type => sdb_type)
+          attributes = adjust_to_sdb_attributes(attributes)
+          #require 'ruby-debug'
+          #debugger
           sdb.put_attributes(domain, item_name, attributes)
           created += 1
         end
@@ -46,6 +53,13 @@ module DataMapper
             data = query.fields.map do |property|
               value = result.values[0][property.field.to_s]
               if value != nil
+     
+                value = chunks_to_string(value) if property.type==String && value.size > 1
+                #replace the newline placeholder with newlines
+                if property.type==String
+                  value = value.gsub(NEWLINE_REPLACE,"\n") if value.is_a?(String)
+                  value[0] = value[0].gsub(NEWLINE_REPLACE,"\n") if value.is_a?(Array) && value[0]!=nil
+                end
                 if value.size > 1
                   value.map {|v| property.typecast(v) }
                 else
@@ -71,6 +85,7 @@ module DataMapper
         updated = 0
         item_name = item_name_for_query(query)
         attributes = attributes.to_a.map {|a| [a.first.name.to_s, a.last]}.to_hash
+        attributes = adjust_to_sdb_attributes(attributes)
         sdb.put_attributes(domain, item_name, attributes, true)
         updated += 1
         raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(query)
@@ -78,6 +93,48 @@ module DataMapper
       end
       
     private
+
+      #hack for converting and storing strings longer than 1024
+      #one thing to note if you use string longer than 1019 chars you will loose the ability to do full text matching on queries
+      #as the string can be broken at any place during chunking
+      def adjust_to_sdb_attributes(attrs)
+        attrs.each_pair do |key, value|
+          if value.is_a?(String)
+            value = value.gsub("\n",NEWLINE_REPLACE)
+            attrs[key] = value
+          end
+          if value.is_a?(String) && value.length > 1019
+            chunked = string_to_chunks(value)
+            attrs[key] = chunked
+          end
+        end
+        attrs
+      end
+      
+      def string_to_chunks(value)
+        chunks = value.to_s.scan(%r/.{1,1019}/) # 1024 - '1024:'.size
+        i = -1
+        fmt = '%04d:'
+        chunks.map!{|chunk| [(fmt % (i += 1)), chunk].join}
+        raise ArgumentError, 'that is just too big yo!' if chunks.size >= 256
+        chunks
+      end
+      
+      def chunks_to_string(value)
+        begin
+          chunks =
+            Array(value).flatten.map do |chunk|
+            index, text = chunk.split(%r/:/, 2)
+            [Float(index).to_i, text]
+          end
+          chunks.replace chunks.sort_by{|index, text| index}
+          string_result = chunks.map!{|index, text| text}.join
+        rescue ArgumentError, TypeError
+          #return original value, they could have put strings in the system not using the adapter or previous versions
+          #that are larger than chunk size, but less than 1024
+          value
+        end
+      end
 
       # Returns the domain for the model
       def domain
