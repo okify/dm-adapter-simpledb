@@ -14,7 +14,6 @@ module DataMapper
 
       def initialize(name, opts = {})
         super                                      
-
         @opts = opts
       end
 
@@ -25,8 +24,6 @@ module DataMapper
           sdb_type = simpledb_type(resource.model)
           attributes = resource.attributes.merge(:simpledb_type => sdb_type)
           attributes = adjust_to_sdb_attributes(attributes)
-          #require 'ruby-debug'
-          #debugger
           sdb.put_attributes(domain, item_name, attributes)
           created += 1
         end
