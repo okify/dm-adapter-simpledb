@@ -94,5 +94,19 @@ describe 'with multiple records saved' do
     people.length.should == 2
   end
 
-  it 'should get records by the like matcher'   
+  it 'should get records by the like matcher' do
+    people = Person.all(:name.like => 'Jeremy%')
+    people.should == [@jeremy]
+  end
+  
+  it 'should get records by the IN matcher' do
+    people = Person.all(:id.in => [@jeremy.id, @danielle.id])
+    people.should include(@jeremy)
+    people.should include(@danielle)
+    people.should_not include(@keegan)
+  end
+  it "should get no records if IN array is empty" do
+    people = Person.all(:id.in => [])
+    people.should be_empty
+  end
 end

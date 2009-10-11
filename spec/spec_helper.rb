@@ -19,6 +19,7 @@ log_file = "log/dm-sdb.log"
 FileUtils.touch(log_file)
 log = Logger.new(log_file)
 
+DataMapper.logger.set_log(log_file, :debug)
 DataMapper.setup(:default, {
   :adapter => 'simpledb',
   :access_key => access_key,

@@ -1,3 +1,6 @@
 .DS_Store
 aws_sdb.log
+aws_config
 coverage
+log/**
+pkg/**
