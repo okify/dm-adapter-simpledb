@@ -3,17 +3,28 @@
 This has been moved to a new location:
 http://github.com/devver/dm-adapter-simpledb/tree/master
 
-This is the new version of the adapter now based on Right_Aws which has helped a lot with performance. The rest of this FAQ is a bit dated...
+This is the new version of the adapter now based on Right_Aws which has helped a
+lot with performance. The rest of this FAQ is a bit dated...
 
 Written by Jeremy Boles
-Contributers Edward Ocampo-Gooding (edward), Dan Mayer (danmayer), Thomas Olausson (latompa)
+
+Contributers: 
+  Edward Ocampo-Gooding (edward) 
+  Dan Mayer (danmayer)
+  Thomas Olausson (latompa)
+  Avdi Grimm (avdi)
 
 A DataMapper adapter for SimpleDB.
 
-This version combines elements of Jeremy's orginal project, adding in code from Edward Ocampo-Gooding. It also includes various bug fixes and updates from Dan Mayer.
+This version combines elements of Jeremy's orginal project, adding in code from
+Edward Ocampo-Gooding. It also includes various bug fixes and updates from Dan
+Mayer. Avdi Grimm updated the code to work with DataMapper 0.10.*, along with
+misc. other improvements.
 
-Tested using Matthew Painter’s SimpleDB/dev http://code.google.com/p/simpledb-dev/
-Additional SimpleDB/dev setup notes found here: http://pandastream.tumblr.com/post/52779609/playing-with-panda-without-simpledb-account
+Tested using Matthew Painter’s SimpleDB/dev
+http://code.google.com/p/simpledb-dev/ Additional SimpleDB/dev setup notes found
+here:
+http://pandastream.tumblr.com/post/52779609/playing-with-panda-without-simpledb-account
 
 == Current state
 
@@ -35,7 +46,7 @@ Additional SimpleDB/dev setup notes found here: http://pandastream.tumblr.com/po
     require 'rubygems'
     require 'dm-core'
     
-    DataMapper.setup(:default, 'simpledb://sdb.amazon.com/sweetapp_development', :access_key_id => 'a valid access key id', :secret_access_key => 'a valid secret access key id')
+    DataMapper.setup(:default, 'simpledb://ACCESS_KEY:SECRET_KEY@sdb.amazon.com/DOMAIN')
     
     [Same as the following, but skip the database.yml]
     
@@ -47,12 +58,10 @@ Additional SimpleDB/dev setup notes found here: http://pandastream.tumblr.com/po
 
       adapter:  simpledb
       database: 'default'
-      access_key_id: (a 20-character, alphanumeric sequence)
-      secret_access_key: (a 40-character sequence)
-      domain: 'sweetapp_development'
+      access_key: (a 20-character, alphanumeric sequence)
+      secret_key: (a 40-character sequence)
+      domain: 'my_amazon_sdb_domain'
       base_url: 'http://sdb.amazon.com'
-
-    Alternatively, 
 
     Create a model
   
@@ -78,13 +87,27 @@ Additional SimpleDB/dev setup notes found here: http://pandastream.tumblr.com/po
       yanked_tree = Tree.remote(:name => "Acer rubrum")
 
 == Running the tests
-   add these two lines to your .bash_profile as the spec_helper relies on them
-   export AMAZON_ACCESS_KEY_ID='YOUR_ACCESS_KEY'
-   export AMAZON_SECRET_ACCESS_KEY='YOUR_SECRET_ACCESS_KEY'
-   
-   Create the test domain on SimpleDB, :domain => 'missionaries' as found in spec_helper. This can be done easiest via IRB or I went to a project that had a database.yml and called db:automigrate because of the added migration support to this adaprter.
+   Add these two lines to your .bash_profile as the spec_helper relies on them
 
-   rake spec
+     $ export AMAZON_ACCESS_KEY_ID='YOUR_ACCESS_KEY'
+     $ export AMAZON_SECRET_ACCESS_KEY='YOUR_SECRET_ACCESS_KEY'
+
+   Configure the domain to use for integration tests. THIS DOMAIN WILL BE
+   DELETED AND RECREATED BY THE TESTS, so do not choose a domain which contains
+   data you care about.  Configure the domain by creating a file named
+   THROW_AWAY_SDB_DOMAIN in the projet root:
+
+    $ echo dm_simpledb_adapter_test > THROW_AWAY_SDB_DOMAIN
+
+   Run the tests:
+   
+     rake spec
+
+   NOTE: While every attempt has been made to make the tests robust, Amazon
+   SimpleDB is by it's nature an unreliable service. Sometimes it can take a
+   very long time for updates to be reflected by queries, and sometimes calls
+   just time out. If the tests fail, try them again a few times before reporting
+   it as a bug. Also try running the spec files individually.
 
 == Bibliography
   Relating to Amazon SimpleDB http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1292&ref=featured

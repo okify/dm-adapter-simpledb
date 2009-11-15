@@ -2,99 +2,172 @@ require 'rubygems'
 require 'dm-core'
 require 'digest/sha1'
 require 'dm-aggregates'
-require 'right_aws' 
+require 'right_aws'
+require 'uuidtools'
+require File.expand_path('simpledb_adapter/sdb_array', File.dirname(__FILE__))
 
 module DataMapper
+
+  module Migrations
+     #integrated from http://github.com/edward/dm-simpledb/tree/master
+      module SimpledbAdapter
+        
+        module ClassMethods
+
+        end
+
+        def self.included(other)
+          other.extend ClassMethods
+
+          DataMapper.extend(::DataMapper::Migrations::SingletonMethods)
+
+          [ :Repository, :Model ].each do |name|
+            ::DataMapper.const_get(name).send(:include, Migrations.const_get(name))
+          end
+        end
+
+        # Returns whether the storage_name exists.
+        # @param storage_name<String> a String defining the name of a domain
+        # @return <Boolean> true if the storage exists
+        def storage_exists?(storage_name)
+          domains = sdb.list_domains[:domains]
+          domains.detect {|d| d == storage_name }!=nil
+        end
+        
+        def create_model_storage(model)
+          sdb.create_domain(@sdb_options[:domain])
+        end
+        
+        #On SimpleDB you probably don't want to destroy the whole domain
+        #if you are just adding fields it is automatically supported
+        #default to non destructive migrate, to destroy run
+        #rake db:automigrate destroy=true
+        def destroy_model_storage(model)
+          if ENV['destroy']!=nil && ENV['destroy']=='true'
+            sdb.delete_domain(@sdb_options[:domain])
+          end
+        end
+
+      end # module Migration
+  end # module Migration
+
   module Adapters
     class SimpleDBAdapter < AbstractAdapter
 
-      #right_aws calls Array(your_string) on all string properties, which splits on \n and then sorts your string in a random order
-      #This is a value that can be used to replace \n before storing a string and get it back coming out of SDB
-      NEWLINE_REPLACE = "[[[NEWLINE]]]"
+      attr_reader :sdb_options
 
-      def initialize(name, opts = {})
-        super                                      
-        @opts = opts
+      # For testing purposes ONLY. Seriously, don't enable this for production
+      # code.
+      attr_accessor :consistency_policy
+
+      def initialize(name, normalised_options)
+        super
+        @sdb_options = {}
+        @sdb_options[:access_key] = options.fetch(:access_key) { 
+          options[:user] 
+        }
+        @sdb_options[:secret_key] = options.fetch(:secret_key) { 
+          options[:password] 
+        }
+        @sdb_options[:logger] = options.fetch(:logger) { DataMapper.logger }
+        @sdb_options[:server] = options.fetch(:host) { 'sdb.amazonaws.com' }
+        @sdb_options[:port]   = options[:port] || 443 # port may be set but nil
+        @sdb_options[:domain] = options.fetch(:domain) { 
+          options[:path].to_s.gsub(%r{(^/+)|(/+$)},"") # remove slashes
+        }
+        @consistency_policy = 
+          normalised_options.fetch(:wait_for_consistency) { false }
       end
 
       def create(resources)
         created = 0
         time = Benchmark.realtime do
           resources.each do |resource|
+            uuid = UUIDTools::UUID.timestamp_create
+            initialize_serial(resource, uuid.to_i)
             item_name = item_name_for_resource(resource)
             sdb_type = simpledb_type(resource.model)
             attributes = resource.attributes.merge(:simpledb_type => sdb_type)
             attributes = adjust_to_sdb_attributes(attributes)
-            #attributes.reject!{|key,value| value.nil? || value == '' || value == []}
+            attributes.reject!{|name, value| value.nil?}
             sdb.put_attributes(domain, item_name, attributes)
             created += 1
           end
         end
         DataMapper.logger.debug(format_log_entry("(#{created}) INSERT #{resources.inspect}", time))
+        modified!
         created
       end
       
-      def delete(query)
+      def delete(collection)
         deleted = 0
         time = Benchmark.realtime do
-          item_name = item_name_for_query(query)
-          sdb.delete_attributes(domain, item_name)
-          deleted += 1
-          raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(query)
-        end; DataMapper.logger.debug(format_log_entry("(#{deleted}) DELETE #{query.conditions.inspect}", time))
+          collection.each do |resource|
+            item_name = item_name_for_resource(resource)
+            sdb.delete_attributes(domain, item_name)
+            deleted += 1
+          end
+          raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(collection.query)
+        end; DataMapper.logger.debug(format_log_entry("(#{deleted}) DELETE #{collection.query.conditions.inspect}", time))
+        modified!
         deleted
       end
 
-      def read_many(query)
+      def read(query)
+        maybe_wait_for_consistency
         sdb_type = simpledb_type(query.model)
         
-        conditions, order = set_conditions_and_sort_order(query, sdb_type)
+        conditions, order, unsupported_conditions = 
+          set_conditions_and_sort_order(query, sdb_type)
         results = get_results(query, conditions, order)
-
-        Collection.new(query) do |collection|
-          results.each do |result|
-            data = query.fields.map do |property|
-              value = result.values[0][property.field.to_s]
-              if value != nil
-     
-                value = chunks_to_string(value) if property.type==String && value.size > 1
-                #replace the newline placeholder with newlines
-                if property.type==String
-                  value = value.gsub(NEWLINE_REPLACE,"\n") if value.is_a?(String)
-                  value[0] = value[0].gsub(NEWLINE_REPLACE,"\n") if value.is_a?(Array) && value[0]!=nil
-                end
-                if value.size > 1
-                  value.map {|v| property.typecast(v) }
+        proto_resources = results.map do |result|
+          name, attributes = *result.to_a.first
+          proto_resource = query.fields.inject({}) do |proto_resource, property|
+            value = attributes[property.field.to_s]
+            if value != nil
+              if value.size > 1
+                if property.type == String
+                  value = chunks_to_string(value)
                 else
-                  property.typecast(value[0])
+                  value = value.map {|v| property.typecast(v) }
                 end
               else
-                 property.typecast(nil)
+                value = property.typecast(value.first)
               end
+            else
+              value = property.typecast(nil)
             end
-            collection.load(data)
+            proto_resource[property.name.to_s] = value
+            proto_resource
           end
+          proto_resource
         end
+        query.conditions.operands.reject!{ |op|
+          !unsupported_conditions.include?(op)
+        }
+        records = query.filter_records(proto_resources)
+
+        records
       end
       
-      def read_one(query)
-        #already has limit defined as 1 return first/only result from collection
-        results = read_many(query)
-        results.inspect #force the lazy loading to actually load
-        results[0]
-      end
- 
-      def update(attributes, query)
+      def update(attributes, collection)
         updated = 0
+        attrs_to_update, attrs_to_delete = prepare_attributes(attributes)
         time = Benchmark.realtime do
-          item_name = item_name_for_query(query)
-          attributes = attributes.to_a.map {|a| [a.first.name.to_s, a.last]}.to_hash
-          attributes = adjust_to_sdb_attributes(attributes)
-          sdb.put_attributes(domain, item_name, attributes, true)
-          updated += 1
-          raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(query)
+          collection.each do |resource|
+            item_name = item_name_for_resource(resource)
+            unless attrs_to_update.empty?
+              sdb.put_attributes(domain, item_name, attrs_to_update, :replace)
+            end
+            unless attrs_to_delete.empty?
+              sdb.delete_attributes(domain, item_name, attrs_to_delete)
+            end
+            updated += 1
+          end
+          raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(collection.query)
         end
-        DataMapper.logger.debug(format_log_entry("UPDATE #{query.conditions.inspect} (#{updated} times)", time))
+        DataMapper.logger.debug(format_log_entry("UPDATE #{collection.query.conditions.inspect} (#{updated} times)", time))
+        modified!
         updated
       end
       
@@ -105,7 +178,7 @@ module DataMapper
       def aggregate(query)
         raise ArgumentError.new("Only count is supported") unless (query.fields.first.operator == :count)
         sdb_type = simpledb_type(query.model)
-        conditions, order = set_conditions_and_sort_order(query, sdb_type)
+        conditions, order, unsupported_conditions = set_conditions_and_sort_order(query, sdb_type)
 
         query_call = "SELECT count(*) FROM #{domain} "
         query_call << "WHERE #{conditions.compact.join(' AND ')}" if conditions.length > 0
@@ -115,17 +188,30 @@ module DataMapper
         end; DataMapper.logger.debug(format_log_entry(query_call, time))
         [results[:items][0].values.first["Count"].first.to_i]
       end
-      
+
+      # For testing purposes only.
+      def wait_for_consistency
+        return unless @current_consistency_token
+        token = :none
+        begin
+          results = sdb.get_attributes(domain, '__dm_consistency_token', '__dm_consistency_token')
+          tokens  = results[:attributes]['__dm_consistency_token']
+        end until tokens.include?(@current_consistency_token)
+      end
+
     private
 
-      #hack for converting and storing strings longer than 1024
-      #one thing to note if you use string longer than 1019 chars you will loose the ability to do full text matching on queries
-      #as the string can be broken at any place during chunking
+      # hack for converting and storing strings longer than 1024 one thing to
+      # note if you use string longer than 1019 chars you will loose the ability
+      # to do full text matching on queries as the string can be broken at any
+      # place during chunking
       def adjust_to_sdb_attributes(attrs)
         attrs.each_pair do |key, value|
-          if value.is_a?(String)
-            value = value.gsub("\n",NEWLINE_REPLACE)
-            attrs[key] = value
+          if value.kind_of?(String)
+            # Strings need to be inside arrays in order to prevent RightAws from
+            # inadvertantly splitting them on newlines when it calls
+            # Array(value).
+            attrs[key] = [value]
           end
           if value.is_a?(String) && value.length > 1019
             chunked = string_to_chunks(value)
@@ -153,6 +239,7 @@ module DataMapper
           end
           chunks.replace chunks.sort_by{|index, text| index}
           string_result = chunks.map!{|index, text| text}.join
+          string_result
         rescue ArgumentError, TypeError
           #return original value, they could have put strings in the system not using the adapter or previous versions
           #that are larger than chunk size, but less than 1024
@@ -162,11 +249,12 @@ module DataMapper
 
       # Returns the domain for the model
       def domain
-        @uri[:domain]
+        @sdb_options[:domain]
       end
 
       #sets the conditions and order for the SDB query
       def set_conditions_and_sort_order(query, sdb_type)
+        unsupported_conditions = []
         conditions = ["simpledb_type = '#{sdb_type}'"]
         # look for query.order.first and insure in conditions
         # raise if order if greater than 1
@@ -174,43 +262,59 @@ module DataMapper
         if query.order && query.order.length > 0
           query_object = query.order[0]
           #anything sorted on must be a condition for SDB
-          conditions << "#{query_object.property.name} IS NOT NULL" 
-          order = "ORDER BY #{query_object.property.name} #{query_object.direction}"
+          conditions << "#{query_object.target.name} IS NOT NULL" 
+          order = "ORDER BY #{query_object.target.name} #{query_object.operator}"
         else
           order = ""
         end
-
-        query.conditions.each do |operator, attribute, value|
-          operator = case operator
-                     when :eql
-                        if value.nil?
-                          conditions << "#{attribute.name} IS NULL"
-                          next
-                        else
-                          '='
-                        end
-                     when :not
-                       if value.nil?
-                         conditions << "#{attribute.name} IS NOT NULL"
-                         next
-                       else
-                         '!='
-                       end
-                     when :gt then '>'
-                     when :gte then '>='
-                     when :lt then '<'
-                     when :lte then '<='
-                     when :like then 'like'
-                     when :in 
-                       values = value.collect{|v| "'#{v}'"}.join(',')
-                       values = "'__NULL__'" if values.empty?                       
-                       conditions << "#{attribute.name} IN (#{values})"
-                       next
-                     else raise "Invalid query operator: #{operator.inspect}" 
-                     end
-          conditions << "#{attribute.name} #{operator} '#{value}'"
+        query.conditions.each do |op|
+          case op.slug
+          when :regexp
+            unsupported_conditions << op
+          when :eql
+            conditions << if op.value.nil?
+              "#{op.subject.name} IS NULL"
+            else
+              "#{op.subject.name} = '#{op.value}'"
+            end
+          when :not then
+            comp = op.operands.first
+            if comp.slug == :like
+              conditions << "#{comp.subject.name} not like '#{comp.value}'"
+              next
+            end
+            case comp.value
+            when Range, Set, Array, Regexp
+              unsupported_conditions << op
+            when nil
+              conditions << "#{comp.subject.name} IS NOT NULL"
+            else
+              conditions << "#{comp.subject.name} != '#{comp.value}'"
+            end
+          when :gt then conditions << "#{op.subject.name} > '#{op.value}'"
+          when :gte then conditions << "#{op.subject.name} >= '#{op.value}'"
+          when :lt then conditions << "#{op.subject.name} < '#{op.value}'"
+          when :lte then conditions << "#{op.subject.name} <= '#{op.value}'"
+          when :like then conditions << "#{op.subject.name} like '#{op.value}'"
+          when :in
+            case op.value
+            when Array, Set
+              values = op.value.collect{|v| "'#{v}'"}.join(',')
+              values = "'__NULL__'" if values.empty?                       
+              conditions << "#{op.subject.name} IN (#{values})"
+            when Range
+              if op.value.exclude_end?
+                unsupported_conditions << op
+              else
+                conditions << "#{op.subject.name} between '#{op.value.first}' and '#{op.value.last}'"
+              end
+            else
+              raise ArgumentError, "Unsupported inclusion op: #{op.value.inspect}"
+            end
+          else raise "Invalid query op: #{op.inspect}"
+          end
         end
-        [conditions,order]
+        [conditions,order,unsupported_conditions]
       end
       
       def select(query_call, query_limit)
@@ -229,7 +333,8 @@ module DataMapper
       
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
-        query_call = "SELECT * FROM #{domain} "
+        output_list = query.fields.map{|f| f.field}.join(', ')
+        query_call = "SELECT #{output_list} FROM #{domain} "
         query_call << "WHERE #{conditions.compact.join(' AND ')}" if conditions.length > 0
         query_call << " #{order}"
         if query.limit!=nil
@@ -240,7 +345,7 @@ module DataMapper
           query_limit = 999999999 #TODO hack for query.limit being nil
           #query_call << " limit 2500" #this doesn't work with continuation keys as it halts at the limit passed not just a limit per query.
         end
-        select(query_call, query_limit)
+        records = select(query_call, query_limit)
       end
       
       # Creates an item name for a query
@@ -263,7 +368,7 @@ module DataMapper
         item_name = "#{sdb_type}+"
         keys = keys_for_model(resource.model)
         item_name += keys.map do |property|
-          resource.instance_variable_get(property.instance_variable_name)
+          property.get(resource)
         end.join('-')
         
         Digest::SHA1.hexdigest(item_name)
@@ -276,16 +381,16 @@ module DataMapper
       
       def not_eql_query?(query)
         # Curosity check to make sure we are only dealing with a delete
-        conditions = query.conditions.map {|c| c[0] }.uniq
+        conditions = query.conditions.map {|c| c.slug }.uniq
         selectors = [ :gt, :gte, :lt, :lte, :not, :like, :in ]
         return (selectors - conditions).size != selectors.size
       end
       
       # Returns an SimpleDB instance to work with
       def sdb
-        access_key = @uri[:access_key]
-        secret_key = @uri[:secret_key]
-        @sdb ||= RightAws::SdbInterface.new(access_key,secret_key,@opts)
+        access_key = @sdb_options[:access_key]
+        secret_key = @sdb_options[:secret_key]
+        @sdb ||= RightAws::SdbInterface.new(access_key,secret_key,@sdb_options)
         @sdb
       end
       
@@ -298,47 +403,67 @@ module DataMapper
         'SDB (%.1fs)  %s' % [ms, query.squeeze(' ')]
       end
 
-      #integrated from http://github.com/edward/dm-simpledb/tree/master
-      module Migration
-        # Returns whether the storage_name exists.
-        # @param storage_name<String> a String defining the name of a domain
-        # @return <Boolean> true if the storage exists
-        def storage_exists?(storage_name)
-          domains = sdb.list_domains[:domains]
-          domains.detect {|d| d == storage_name }!=nil
+      def prepare_attributes(attributes)
+        attributes = attributes.to_a.map {|a| [a.first.name.to_s, a.last]}.to_hash
+        attributes = adjust_to_sdb_attributes(attributes)
+        updates, deletes = attributes.partition{|name,value|
+          !value.nil? && !(value.respond_to?(:to_ary) && value.to_ary.empty?)
+        }
+        attrs_to_update = Hash[updates]
+        attrs_to_delete = Hash[deletes].keys
+        [attrs_to_update, attrs_to_delete]
+      end
+
+      def update_consistency_token
+        @current_consistency_token = UUIDTools::UUID.timestamp_create.to_s
+        sdb.put_attributes(
+          domain, 
+          '__dm_consistency_token', 
+          {'__dm_consistency_token' => [@current_consistency_token]})
+      end
+
+      def maybe_wait_for_consistency
+        if consistency_policy == :automatic && @current_consistency_token
+          wait_for_consistency
         end
-        
-        def create_model_storage(repository, model)
-          sdb.create_domain(@uri[:domain])
+      end
+
+      # SimpleDB supports "eventual consistency", which mean your data will be
+      # there... eventually. Obviously this can make tests a little flaky. One
+      # option is to just wait a fixed amount of time after every write, but
+      # this can quickly add up to a lot of waiting. The strategy implemented
+      # here is based on the theory that while consistency is only eventual,
+      # chances are writes will at least be linear. That is, once the results of
+      # write #2 show up we can probably assume that the results of write #1 are
+      # in as well.
+      #
+      # When a consistency policy is enabled, the adapter writes a new unique
+      # "consistency token" to the database after every write (i.e. every
+      # create, update, or delete). If the policy is :manual, it only writes the
+      # consistency token. If the policy is :automatic, writes will not return
+      # until the token has been successfully read back.
+      #
+      # When waiting for the consistency token to show up, we use progressively
+      # longer timeouts until finally giving up and raising an exception.
+      def modified!
+        case @consistency_policy
+        when :manual, :automatic then
+          update_consistency_token
+        when false then
+          # do nothing
+        else
+          raise "Invalid :wait_for_consistency option: #{@consistency_policy.inspect}"
         end
-        
-        #On SimpleDB you probably don't want to destroy the whole domain
-        #if you are just adding fields it is automatically supported
-        #default to non destructive migrate, to destroy run
-        #rake db:automigrate destroy=true
-        def destroy_model_storage(repository, model)
-          if ENV['destroy']!=nil && ENV['destroy']=='true'
-            sdb.delete_domain(@uri[:domain])
-          end
-        end
-        
-        #TODO look at github panda simpleDB for serials support?
-        module SQL
-          def supports_serial?
-            false
-          end
-        end
-        
-        include SQL
-        
-      end # module Migration
-      
-      include Migration
-      
+      end
+
     end # class SimpleDBAdapter
     
     # Required naming scheme.
     SimpledbAdapter = SimpleDBAdapter
-    
+
+    const_added(:SimpledbAdapter)
+
   end # module Adapters
+
+
 end # module DataMapper
