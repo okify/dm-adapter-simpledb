@@ -56,7 +56,7 @@ Features:
  * Basic aggregation support (Model.count("..."))
  * String "chunking" permits attributes to exceed the 1024-byte limit
 
-Note: as of version 2.0.0, this gem supports supports the DataMapper 0.10.*
+Note: as of version 1.0.0, this gem supports supports the DataMapper 0.10.*
 series and breaks backwards compatibility with DataMapper 0.9.*.
 END
     gem.authors         = [
