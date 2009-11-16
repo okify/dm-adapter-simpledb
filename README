@@ -1,12 +1,28 @@
 = dm-adapter-simpledb
 
-This has been moved to a new location:
-http://github.com/devver/dm-adapter-simpledb/tree/master
+== What
 
-This is the new version of the adapter now based on Right_Aws which has helped a
-lot with performance. The rest of this FAQ is a bit dated...
+A DataMapper adapter for Amazon's SimpleDB service. 
 
-Written by Jeremy Boles
+Features:
+ * Uses the RightAWS gem for efficient SimpleDB operations.
+ * Full set of CRUD operations
+ * Supports all DataMapper query predicates.
+ * Can translate many queries into efficient native SELECT operations.
+ * Migrations
+ * DataMapper identity map support for record caching
+ * Lazy-loaded attributes
+ * DataMapper Serial property support via UUIDs.
+ * Array properties
+ * Basic aggregation support (Model.count("..."))
+ * String "chunking" permits attributes to exceed the 1024-byte limit
+
+Note: as of version 2.0.0, this gem supports supports the DataMapper 0.10.*
+series and breaks backwards compatibility with DataMapper 0.9.*.
+
+== Who
+
+Originally written by Jeremy Boles. 
 
 Contributers: 
   Edward Ocampo-Gooding (edward) 
@@ -14,34 +30,33 @@ Contributers:
   Thomas Olausson (latompa)
   Avdi Grimm (avdi)
 
-A DataMapper adapter for SimpleDB.
 
-This version combines elements of Jeremy's orginal project, adding in code from
-Edward Ocampo-Gooding. It also includes various bug fixes and updates from Dan
-Mayer. Avdi Grimm updated the code to work with DataMapper 0.10.*, along with
-misc. other improvements.
+== Where
 
-Tested using Matthew Painter’s SimpleDB/dev
-http://code.google.com/p/simpledb-dev/ Additional SimpleDB/dev setup notes found
-here:
-http://pandastream.tumblr.com/post/52779609/playing-with-panda-without-simpledb-account
+dm-adapter-simpledb is currently maintained by the Devver team and lives at:
+http://github.com/devver/dm-adapter-simpledb/
 
-== Current state
+== TODO
 
-   Updated to work with current versions of DataMapper and Merb, in use on small production sites.
-
-   When starting this project, I assumed that SimpleDB allowed queries to span more than one domain. I was terribly wrong.
-  In lieu of that, this SimpleDB adapter follows the Single Table Inheritance pattern espoused by articles online and seen in a variety of similar libraries (see Bibliography). What a bummer.
-
-== Future goals
-
-  * Parallelized queries for increased throughput
-  * Support of normalized 1:1 table:domain schemes that works with associations
-  * Local caching of results using something like query strings for cache keys
+ * Backwards-compatibility option for nils stored as "nil" string
+ * More complete handling of NOT conditions in queries
+ * Robust quoting in SELECT calls
+ * Handle exclusive ranges natively
+   Implement as inclusive range + filter step
+ * Tests for associations
+ * Split up into multiple files
+ * Option for smart lexicographical storage for numbers
+   - Zero-pad integers
+   - Store floats using exponential notation
+ * Option to store Date/Time/DateTime as ISO8601
+ * Full aggregate support (min/max/etc)
+ * Option to use libxml if available
+ * Parallelized queries for increased throughput
+ * Support of normalized 1:1 table:domain schemes that works with associations
 
 == Usage
   
-  === Standalone
+=== Standalone
   
     require 'rubygems'
     require 'dm-core'
@@ -50,7 +65,7 @@ http://pandastream.tumblr.com/post/52779609/playing-with-panda-without-simpledb-
     
     [Same as the following, but skip the database.yml]
     
-  === In a Merb application
+=== In a Merb application
     See sample Merb application using Merb-Auth and protected resources on SimpleDB:
     http://github.com/danmayer/merb-simpledb-dm_example/tree/master
   
@@ -70,7 +85,7 @@ http://pandastream.tumblr.com/post/52779609/playing-with-panda-without-simpledb-
       
         storage_name "trees"  # manually setting the domain
       
-        property :id,   Integer, :serial => true
+        property :id,   Serial
         property :name, String, :nullable => false
       end
 
@@ -110,20 +125,32 @@ http://pandastream.tumblr.com/post/52779609/playing-with-panda-without-simpledb-
    it as a bug. Also try running the spec files individually.
 
 == Bibliography
-  Relating to Amazon SimpleDB http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1292&ref=featured
-    Approaching SimpleDB from a relational database background
+
+Relating to Amazon SimpleDB
+http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1292&ref=featured
+Approaching SimpleDB from a relational database background
   
-  Active Record Persistence with Amazon SimpleDB http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1367&categoryID=152
+Active Record Persistence with Amazon SimpleDB
+http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1367&categoryID=152
   
-  Building for Performance and Reliability with Amazon SimpleDB  http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1394&categoryID=152
+Building for Performance and Reliability with Amazon SimpleDB
+http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1394&categoryID=152
   
-  Query 101: Building Amazon SimpleDB Queries  http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1231&categoryID=152
+Query 101: Building Amazon SimpleDB Queries
+http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1231&categoryID=152
   
-  Query 201: Tips & Tricks for Amazon SimpleDB Query  http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1232&categoryID=152
-    Latter portion describes parallelization advantages of normalized domains – the downside being the added complexity at the application layer (this library’s).
+Query 201: Tips & Tricks for Amazon SimpleDB Query
+http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1232&categoryID=152
+Latter portion describes parallelization advantages of normalized domains – the
+downside being the added complexity at the application layer (this library’s).
   
-  Using SimpleDB and Rails in No Time with ActiveResource  http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1242&categoryID=152
-    Exemplifies using the Single Table Inheritance pattern within a single SimpleDB domain by storing the model type in an attribute called '_resource' and using a “SHA512 hash function on the request body combined with a timestamp and a configurable salt” for the id.
+Using SimpleDB and Rails in No Time with ActiveResource
+http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1242&categoryID=152
+Exemplifies using the Single Table Inheritance pattern within a single SimpleDB
+domain by storing the model type in an attribute called '_resource' and using a
+“SHA512 hash function on the request body combined with a timestamp and a
+configurable salt” for the id.
   
-  RightScale Ruby library to access Amazon EC2, S3, SQS, and SDB  http://developer.amazonwebservices.com/connect/entry!default.jspa?categoryID=140&externalID=1014&fromSearchPage=true
+RightScale Ruby library to access Amazon EC2, S3, SQS, and SDB
+http://developer.amazonwebservices.com/connect/entry!default.jspa?categoryID=140&externalID=1014&fromSearchPage=true
   
