@@ -5,7 +5,7 @@
 
 Gem::Specification.new do |s|
   s.name = %q{dm-adapter-simpledb}
-  s.version = "2.0.0"
+  s.version = "1.0.0"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Jeremy Boles", "Edward Ocampo-Gooding", "Dan Mayer", "Thomas Olausson", "Avdi Grimm"]
@@ -25,7 +25,7 @@ Features:
  * Basic aggregation support (Model.count("..."))
  * String "chunking" permits attributes to exceed the 1024-byte limit
 
-Note: as of version 2.0.0, this gem supports supports the DataMapper 0.10.*
+Note: as of version 1.0.0, this gem supports supports the DataMapper 0.10.*
 series and breaks backwards compatibility with DataMapper 0.9.*.
 }
   s.email = %q{devs@devver.net}
@@ -37,7 +37,9 @@ series and breaks backwards compatibility with DataMapper 0.9.*.
      ".gitignore",
      "README",
      "Rakefile",
+     "VERSION",
      "aws_config.sample",
+     "dm-adapter-simpledb.gemspec",
      "lib/simpledb_adapter.rb",
      "lib/simpledb_adapter/sdb_array.rb",
      "scripts/simple_benchmark.rb",
