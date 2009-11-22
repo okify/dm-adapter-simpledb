@@ -1,10 +1,20 @@
-require 'rubygems'
+gem 'dm-migrations', '~> 0.10.0'
+gem 'dm-types',      '~> 0.10.0'
+gem 'dm-aggregates', '~> 0.10.0'
+gem 'dm-core',       '~> 0.10.0'
+
+
 require 'dm-core'
-require 'digest/sha1'
 require 'dm-aggregates'
+require 'digest/sha1'
 require 'right_aws'
 require 'uuidtools'
-require File.expand_path('simpledb_adapter/sdb_array', File.dirname(__FILE__))
+
+require 'simpledb/sdb_array'
+require 'simpledb/utils'
+require 'simpledb/record'
+require 'simpledb/table'
+
 
 module DataMapper
 
@@ -53,6 +63,7 @@ module DataMapper
 
   module Adapters
     class SimpleDBAdapter < AbstractAdapter
+      include SimpleDB::Utils
 
       attr_reader :sdb_options
 
@@ -75,8 +86,17 @@ module DataMapper
         @sdb_options[:domain] = options.fetch(:domain) { 
           options[:path].to_s.gsub(%r{(^/+)|(/+$)},"") # remove slashes
         }
+        # We do not expect to be saving any nils in future, because now we
+        # represent null values by removing the attributes. The representation
+        # here is chosen on the basis of it being unlikely to match any strings
+        # found in real-world records, as well as being eye-catching in case any
+        # nils DO manage to sneak in. It would be preferable if we could disable
+        # RightAWS's nil-token replacement altogether, but that does not appear
+        # to be an option.
+        @sdb_options[:nil_representation] = "<[<[<NIL>]>]>"
         @consistency_policy = 
           normalised_options.fetch(:wait_for_consistency) { false }
+        @sdb = options.fetch(:sdb_interface) { nil }
       end
 
       def create(resources)
@@ -85,11 +105,10 @@ module DataMapper
           resources.each do |resource|
             uuid = UUIDTools::UUID.timestamp_create
             initialize_serial(resource, uuid.to_i)
-            item_name = item_name_for_resource(resource)
-            sdb_type = simpledb_type(resource.model)
-            attributes = resource.attributes.merge(:simpledb_type => sdb_type)
-            attributes = adjust_to_sdb_attributes(attributes)
-            attributes.reject!{|name, value| value.nil?}
+
+            record     = SimpleDB::Record.from_resource(resource)
+            attributes = record.writable_attributes
+            item_name  = record.item_name
             sdb.put_attributes(domain, item_name, attributes)
             created += 1
           end
@@ -103,7 +122,8 @@ module DataMapper
         deleted = 0
         time = Benchmark.realtime do
           collection.each do |resource|
-            item_name = item_name_for_resource(resource)
+            record = SimpleDB::Record.from_resource(resource)
+            item_name = record.item_name
             sdb.delete_attributes(domain, item_name)
             deleted += 1
           end
@@ -115,33 +135,17 @@ module DataMapper
 
       def read(query)
         maybe_wait_for_consistency
-        sdb_type = simpledb_type(query.model)
-        
+        table = SimpleDB::Table.new(query.model)
         conditions, order, unsupported_conditions = 
-          set_conditions_and_sort_order(query, sdb_type)
+          set_conditions_and_sort_order(query, table.simpledb_type)
         results = get_results(query, conditions, order)
-        proto_resources = results.map do |result|
-          name, attributes = *result.to_a.first
-          proto_resource = query.fields.inject({}) do |proto_resource, property|
-            value = attributes[property.field.to_s]
-            if value != nil
-              if value.size > 1
-                if property.type == String
-                  value = chunks_to_string(value)
-                else
-                  value = value.map {|v| property.typecast(v) }
-                end
-              else
-                value = property.typecast(value.first)
-              end
-            else
-              value = property.typecast(nil)
-            end
-            proto_resource[property.name.to_s] = value
-            proto_resource
-          end
-          proto_resource
-        end
+        records = results.map{|result| 
+          SimpleDB::Record.from_simpledb_hash(result)
+        }
+
+        proto_resources = records.map{|record|
+          record.to_resource_hash(query.fields)
+        }
         query.conditions.operands.reject!{ |op|
           !unsupported_conditions.include?(op)
         }
@@ -152,10 +156,14 @@ module DataMapper
       
       def update(attributes, collection)
         updated = 0
-        attrs_to_update, attrs_to_delete = prepare_attributes(attributes)
         time = Benchmark.realtime do
           collection.each do |resource|
-            item_name = item_name_for_resource(resource)
+            updated_resource = resource.dup
+            updated_resource.attributes = attributes
+            record = SimpleDB::Record.from_resource(updated_resource)
+            attrs_to_update = record.writable_attributes
+            attrs_to_delete = record.deletable_attributes
+            item_name       = record.item_name
             unless attrs_to_update.empty?
               sdb.put_attributes(domain, item_name, attrs_to_update, :replace)
             end
@@ -177,7 +185,8 @@ module DataMapper
       
       def aggregate(query)
         raise ArgumentError.new("Only count is supported") unless (query.fields.first.operator == :count)
-        sdb_type = simpledb_type(query.model)
+        table    = SimpleDB::Table.new(query.model)
+        sdb_type = table.simpledb_type
         conditions, order, unsupported_conditions = set_conditions_and_sort_order(query, sdb_type)
 
         query_call = "SELECT count(*) FROM #{domain} "
@@ -200,53 +209,6 @@ module DataMapper
       end
 
     private
-
-      # hack for converting and storing strings longer than 1024 one thing to
-      # note if you use string longer than 1019 chars you will loose the ability
-      # to do full text matching on queries as the string can be broken at any
-      # place during chunking
-      def adjust_to_sdb_attributes(attrs)
-        attrs.each_pair do |key, value|
-          if value.kind_of?(String)
-            # Strings need to be inside arrays in order to prevent RightAws from
-            # inadvertantly splitting them on newlines when it calls
-            # Array(value).
-            attrs[key] = [value]
-          end
-          if value.is_a?(String) && value.length > 1019
-            chunked = string_to_chunks(value)
-            attrs[key] = chunked
-          end
-        end
-        attrs
-      end
-      
-      def string_to_chunks(value)
-        chunks = value.to_s.scan(%r/.{1,1019}/) # 1024 - '1024:'.size
-        i = -1
-        fmt = '%04d:'
-        chunks.map!{|chunk| [(fmt % (i += 1)), chunk].join}
-        raise ArgumentError, 'that is just too big yo!' if chunks.size >= 256
-        chunks
-      end
-      
-      def chunks_to_string(value)
-        begin
-          chunks =
-            Array(value).flatten.map do |chunk|
-            index, text = chunk.split(%r/:/, 2)
-            [Float(index).to_i, text]
-          end
-          chunks.replace chunks.sort_by{|index, text| index}
-          string_result = chunks.map!{|index, text| text}.join
-          string_result
-        rescue ArgumentError, TypeError
-          #return original value, they could have put strings in the system not using the adapter or previous versions
-          #that are larger than chunk size, but less than 1024
-          value
-        end
-      end
-
       # Returns the domain for the model
       def domain
         @sdb_options[:domain]
@@ -333,7 +295,9 @@ module DataMapper
       
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
-        output_list = query.fields.map{|f| f.field}.join(', ')
+        fields_to_request = query.fields.map{|f| f.field}
+        fields_to_request << SimpleDB::Record::METADATA_KEY
+        output_list = fields_to_request.join(', ')
         query_call = "SELECT #{output_list} FROM #{domain} "
         query_call << "WHERE #{conditions.compact.join(' AND ')}" if conditions.length > 0
         query_call << " #{order}"
@@ -361,24 +325,6 @@ module DataMapper
         Digest::SHA1.hexdigest(item_name)
       end
       
-      # Creates an item name for a resource
-      def item_name_for_resource(resource)
-        sdb_type = simpledb_type(resource.model)
-        
-        item_name = "#{sdb_type}+"
-        keys = keys_for_model(resource.model)
-        item_name += keys.map do |property|
-          property.get(resource)
-        end.join('-')
-        
-        Digest::SHA1.hexdigest(item_name)
-      end
-      
-      # Returns the keys for model sorted in alphabetical order
-      def keys_for_model(model)
-        model.key(self.name).sort {|a,b| a.name.to_s <=> b.name.to_s }
-      end
-      
       def not_eql_query?(query)
         # Curosity check to make sure we are only dealing with a delete
         conditions = query.conditions.map {|c| c.slug }.uniq
@@ -394,24 +340,8 @@ module DataMapper
         @sdb
       end
       
-      # Returns a string so we know what type of
-      def simpledb_type(model)
-        model.storage_name(model.repository.name)
-      end
-
       def format_log_entry(query, ms = 0)
         'SDB (%.1fs)  %s' % [ms, query.squeeze(' ')]
-      end
-
-      def prepare_attributes(attributes)
-        attributes = attributes.to_a.map {|a| [a.first.name.to_s, a.last]}.to_hash
-        attributes = adjust_to_sdb_attributes(attributes)
-        updates, deletes = attributes.partition{|name,value|
-          !value.nil? && !(value.respond_to?(:to_ary) && value.to_ary.empty?)
-        }
-        attrs_to_update = Hash[updates]
-        attrs_to_delete = Hash[deletes].keys
-        [attrs_to_update, attrs_to_delete]
       end
 
       def update_consistency_token
@@ -457,6 +387,7 @@ module DataMapper
       end
 
     end # class SimpleDBAdapter
+
     
     # Required naming scheme.
     SimpledbAdapter = SimpleDBAdapter

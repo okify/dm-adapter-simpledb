@@ -28,6 +28,15 @@ end
 
 describe DataMapper::Adapters::SimpleDBAdapter do
 
+  class Project
+    include DataMapper::Resource
+    property :id, Integer, :key => true
+    property :project_repo, String
+    property :repo_user, String
+    property :description, String
+  end
+
+
   LONG_VALUE =<<-EOF
     #!/bin/sh
 
@@ -157,6 +166,62 @@ EOF
         lambda { Friend.avg(:age) }.should raise_error(ArgumentError)
         lambda { Friend.sum(:age) }.should raise_error(ArgumentError)
       end
+    end
+  end
+
+  context "given a pre-existing v0 record" do
+    before :each do
+      @record_name = "33d9e5a6fcbd746dc40904a6766d4166e14305fe"
+      record_attributes = {
+        "simpledb_type"  => ["projects"], 
+        "project_repo"   => ["git://github.com/TwP/servolux.git"], 
+        "files_complete" => ["nil"], 
+        "repo_user"      => ["nil"], 
+        "id"             => ["1077338529"], 
+        "description"    => [
+            "0002:line 2[[[NEWLINE]]]line 3[[[NEW",
+            "0001:line 1[[[NEWLINE]]]",
+            "0003:LINE]]]line 4"
+          ]
+      }
+      @sdb.put_attributes(@domain, @record_name, record_attributes)
+      sleep 0.4
+      @record = Project.get(1077338529)
+    end
+
+    it "should interpret legacy nil values correctly" do
+      @record.repo_user.should be_nil
+    end
+
+    it "should interpret legacy strings correctly" do
+      @record.description.should ==
+        "line 1\nline 2\nline 3\nline 4"
+    end
+
+    it "should save legacy records without adding new metadata" do
+      @record.repo_user = "steve"
+      @record.save
+      sleep 0.4
+      attributes = @sdb.get_attributes(@domain, @record_name)[:attributes]
+      attributes.should_not include("__dm_metadata")
+    end
+  end
+
+  describe "given a brand-new record" do
+    before :each do
+      @record = Project.new(
+        :repo_user    => "steve", 
+        :id           => 123, 
+        :project_repo => "git://example.org/foo")
+    end
+
+    it "should add metadata to the record on save" do
+      @record.save
+      sleep 0.4
+      items = @sdb.select("select * from #{@domain} where id = '123'")[:items]
+      attributes = items.first.values.first
+      attributes["__dm_metadata"].should include("v01.01.00")
+      attributes["__dm_metadata"].should include("table:projects")
     end
   end
 end
