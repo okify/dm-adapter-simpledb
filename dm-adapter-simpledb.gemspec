@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = %q{dm-adapter-simpledb}
-  s.version = "1.0.0"
+  s.version = "1.1.0"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Jeremy Boles", "Edward Ocampo-Gooding", "Dan Mayer", "Thomas Olausson", "Avdi Grimm"]
-  s.date = %q{2009-11-16}
+  s.date = %q{2009-11-24}
   s.description = %q{A DataMapper adapter for Amazon's SimpleDB service. 
 
 Features:
@@ -35,26 +35,37 @@ series and breaks backwards compatibility with DataMapper 0.9.*.
   s.files = [
     ".autotest",
      ".gitignore",
+     "History.txt",
      "README",
      "Rakefile",
      "VERSION",
      "aws_config.sample",
      "dm-adapter-simpledb.gemspec",
+     "lib/dm-adapter-simpledb.rb",
+     "lib/dm-adapter-simpledb/adapters/simpledb_adapter.rb",
+     "lib/dm-adapter-simpledb/chunked_string.rb",
+     "lib/dm-adapter-simpledb/migrations/simpledb_adapter.rb",
+     "lib/dm-adapter-simpledb/rake.rb",
+     "lib/dm-adapter-simpledb/record.rb",
+     "lib/dm-adapter-simpledb/sdb_array.rb",
+     "lib/dm-adapter-simpledb/table.rb",
+     "lib/dm-adapter-simpledb/utils.rb",
      "lib/simpledb_adapter.rb",
-     "lib/simpledb_adapter/sdb_array.rb",
      "scripts/simple_benchmark.rb",
-     "spec/associations_spec.rb",
-     "spec/compliance_spec.rb",
-     "spec/date_spec.rb",
-     "spec/limit_and_order_spec.rb",
-     "spec/migrations_spec.rb",
-     "spec/multiple_records_spec.rb",
-     "spec/nils_spec.rb",
-     "spec/sdb_array_spec.rb",
-     "spec/simpledb_adapter_spec.rb",
+     "spec/integration/associations_spec.rb",
+     "spec/integration/compliance_spec.rb",
+     "spec/integration/date_spec.rb",
+     "spec/integration/limit_and_order_spec.rb",
+     "spec/integration/migrations_spec.rb",
+     "spec/integration/multiple_records_spec.rb",
+     "spec/integration/nils_spec.rb",
+     "spec/integration/sdb_array_spec.rb",
+     "spec/integration/simpledb_adapter_spec.rb",
+     "spec/integration/spec_helper.rb",
      "spec/spec.opts",
-     "spec/spec_helper.rb",
-     "tasks/devver.rake"
+     "spec/unit/record_spec.rb",
+     "spec/unit/simpledb_adapter_spec.rb",
+     "spec/unit/unit_spec_helper.rb"
   ]
   s.homepage = %q{http://github.com/devver/dm-adapter-simpledb}
   s.rdoc_options = ["--charset=UTF-8"]
@@ -62,16 +73,19 @@ series and breaks backwards compatibility with DataMapper 0.9.*.
   s.rubygems_version = %q{1.3.5}
   s.summary = %q{DataMapper adapter for Amazon SimpleDB}
   s.test_files = [
-    "spec/nils_spec.rb",
-     "spec/limit_and_order_spec.rb",
-     "spec/compliance_spec.rb",
-     "spec/simpledb_adapter_spec.rb",
-     "spec/date_spec.rb",
-     "spec/sdb_array_spec.rb",
-     "spec/migrations_spec.rb",
-     "spec/spec_helper.rb",
-     "spec/multiple_records_spec.rb",
-     "spec/associations_spec.rb"
+    "spec/integration/nils_spec.rb",
+     "spec/integration/limit_and_order_spec.rb",
+     "spec/integration/compliance_spec.rb",
+     "spec/integration/simpledb_adapter_spec.rb",
+     "spec/integration/date_spec.rb",
+     "spec/integration/sdb_array_spec.rb",
+     "spec/integration/migrations_spec.rb",
+     "spec/integration/spec_helper.rb",
+     "spec/integration/multiple_records_spec.rb",
+     "spec/integration/associations_spec.rb",
+     "spec/unit/simpledb_adapter_spec.rb",
+     "spec/unit/unit_spec_helper.rb",
+     "spec/unit/record_spec.rb"
   ]
 
   if s.respond_to? :specification_version then
@@ -81,17 +95,23 @@ series and breaks backwards compatibility with DataMapper 0.9.*.
     if Gem::Version.new(Gem::RubyGemsVersion) >= Gem::Version.new('1.2.0') then
       s.add_runtime_dependency(%q<dm-core>, ["~> 0.10.0"])
       s.add_runtime_dependency(%q<dm-aggregates>, ["~> 0.10.0"])
+      s.add_runtime_dependency(%q<dm-migrations>, ["~> 0.10.0"])
+      s.add_runtime_dependency(%q<dm-types>, ["~> 0.10.0"])
       s.add_runtime_dependency(%q<uuidtools>, ["~> 2.0"])
       s.add_runtime_dependency(%q<right_aws>, ["~> 1.10"])
     else
       s.add_dependency(%q<dm-core>, ["~> 0.10.0"])
       s.add_dependency(%q<dm-aggregates>, ["~> 0.10.0"])
+      s.add_dependency(%q<dm-migrations>, ["~> 0.10.0"])
+      s.add_dependency(%q<dm-types>, ["~> 0.10.0"])
       s.add_dependency(%q<uuidtools>, ["~> 2.0"])
       s.add_dependency(%q<right_aws>, ["~> 1.10"])
     end
   else
     s.add_dependency(%q<dm-core>, ["~> 0.10.0"])
     s.add_dependency(%q<dm-aggregates>, ["~> 0.10.0"])
+    s.add_dependency(%q<dm-migrations>, ["~> 0.10.0"])
+    s.add_dependency(%q<dm-types>, ["~> 0.10.0"])
     s.add_dependency(%q<uuidtools>, ["~> 2.0"])
     s.add_dependency(%q<right_aws>, ["~> 1.10"])
   end
