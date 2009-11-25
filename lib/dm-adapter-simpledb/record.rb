@@ -1,13 +1,13 @@
 require 'dm-core'
-require 'simpledb/utils'
-require 'simpledb/chunked_string'
-require 'simpledb/table'
+require 'dm-adapter-simpledb/utils'
+require 'dm-adapter-simpledb/chunked_string'
+require 'dm-adapter-simpledb/table'
 
 # TODO
 # * V1.1: Store type in __dm_metadata
 # * V1.1: Store type as non-munged class name
 
-module SimpleDB
+module DmAdapterSimpledb
   class Record
     include Utils
 

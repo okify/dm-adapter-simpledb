@@ -1,8 +1,8 @@
 require File.expand_path('unit_spec_helper', File.dirname(__FILE__))
-require 'simpledb/record'
-require 'simpledb/sdb_array'
+require 'dm-adapter-simpledb/record'
+require 'dm-adapter-simpledb/sdb_array'
 
-describe SimpleDB::Record do
+describe DmAdapterSimpledb::Record do
 
 
   context "given a record from SimpleDB" do
@@ -12,7 +12,7 @@ describe SimpleDB::Record do
 
         property :foo, Integer
       end
-      @it = SimpleDB::Record.from_simpledb_hash(
+      @it = DmAdapterSimpledb::Record.from_simpledb_hash(
         {"KEY" => {
             "foo"           => ["123"],
             "baz"           => ["456"],
@@ -62,7 +62,7 @@ describe SimpleDB::Record do
         property :foo, Integer, :key => true
       end
 
-      @it = SimpleDB::Record.from_simpledb_hash(
+      @it = DmAdapterSimpledb::Record.from_simpledb_hash(
         {"KEY" => {
             "foo"           => ["123"],
             "text"          => [
@@ -151,7 +151,7 @@ describe SimpleDB::Record do
         property :bar, Integer
       end
 
-      @it = SimpleDB::Record.from_simpledb_hash(
+      @it = DmAdapterSimpledb::Record.from_simpledb_hash(
         {"KEY" => {
             "__dm_metadata" => ["v01.01.00", "table:mystuff"],
             "bar"           => ["456"],
@@ -165,7 +165,7 @@ describe SimpleDB::Record do
     end
 
     it "should be a V1 record" do
-      @it.should be_a_kind_of(SimpleDB::RecordV1_1)
+      @it.should be_a_kind_of(DmAdapterSimpledb::RecordV1_1)
     end
 
     it "should identify the record as version 1" do
@@ -195,7 +195,7 @@ describe SimpleDB::Record do
     end
 
     before :each do 
-      @it = SimpleDB::Record.from_simpledb_hash(
+      @it = DmAdapterSimpledb::Record.from_simpledb_hash(
         {"KEY" => {
             "__dm_metadata" => ["v01.01.00"],
             "text" => [
@@ -252,7 +252,7 @@ describe SimpleDB::Record do
         :tags  => ['latin', 'classic'],
         :isbn  => nil)
 
-      @it = SimpleDB::Record.from_resource(@resource)
+      @it = DmAdapterSimpledb::Record.from_resource(@resource)
     end
 
     it "should be able to generate an item name" do
@@ -276,7 +276,7 @@ describe SimpleDB::Record do
       end
 
       it "should be able to round-trip the text it chunks" do
-        SimpleDB::Record.from_simpledb_hash({"NAME" => @hash})["text", String].should ==
+        DmAdapterSimpledb::Record.from_simpledb_hash({"NAME" => @hash})["text", String].should ==
           @text
       end
 
@@ -285,7 +285,7 @@ describe SimpleDB::Record do
       end
 
       it "should be able to round-trip arrays" do
-        SimpleDB::Record.from_simpledb_hash({"NAME" => @hash})["tags", DataMapper::Types::SdbArray].should ==
+        DmAdapterSimpledb::Record.from_simpledb_hash({"NAME" => @hash})["tags", DataMapper::Types::SdbArray].should ==
           ['latin', 'classic']
       end
 
@@ -335,7 +335,7 @@ describe SimpleDB::Record do
       @resource.stub!(:saved? => true)
       @resource.stub!(:new? => false)
 
-      @it = SimpleDB::Record.from_resource(@resource)
+      @it = DmAdapterSimpledb::Record.from_resource(@resource)
     end
 
     it "should not include metadata in writable attributes" do

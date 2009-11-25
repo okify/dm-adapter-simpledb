@@ -1,4 +1,4 @@
-module SimpleDB
+module DmAdapterSimpledb
   module Utils
     def transform_hash(original, options={}, &block)
       original.inject({}){|result, (key,value)|

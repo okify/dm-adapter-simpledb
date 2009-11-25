@@ -1,5 +1,5 @@
 require 'pathname'
-require Pathname(__FILE__).dirname.parent.expand_path + 'lib/simpledb_adapter'
+require Pathname(__FILE__).dirname.parent.expand_path + 'lib/dm-adapter-simpledb'
 require 'ruby-debug'
 require 'benchmark'
 

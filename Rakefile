@@ -1,7 +1,6 @@
 require 'spec'
 require 'spec/rake/spectask'
 require 'pathname'
-load 'tasks/devver.rake'
 
 ROOT = Pathname(__FILE__).dirname.expand_path
 

@@ -75,18 +75,6 @@ describe DataMapper::Adapters::SimpleDBAdapter do
       @record = Product.first
     end
     
-    it "should write correct metadata back to the record on update" do
-      @record = Product.first
-      @record.stock = 5
-      @sdb.should_receive(:put_attributes).with(
-        anything,
-        anything,
-        hash_including(
-          'stock' => ["5"], 
-          '__dm_metadata' => ['v01.01.00', 'foobar']),
-        :replace)
-      @record.save
-    end
   end
 
 end

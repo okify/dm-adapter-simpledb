@@ -4,7 +4,7 @@ namespace :simpledb do
     raise "THIS IS A WORK IN PROGRESS AND WILL DESTROY YOUR DATA"
     require 'progressbar'
     require 'right_aws'
-    require 'simpledb/record'
+    require 'dm-adapter-simpledb/record'
 
     puts "Initializing connection..."
     domain = args.domain
@@ -27,7 +27,7 @@ namespace :simpledb do
       next_token = results[:next_token]
       items = results[:items]
       items.each do |item|
-        legacy_record = SimpleDB::Record.from_simpledb_hash(item)
+        legacy_record = DmAdapterSimpledb::Record.from_simpledb_hash(item)
         new_record    = legacy_record.migrate
         updates       = new_record.writable_attributes
         deletes       = new_record.deletable_attributes

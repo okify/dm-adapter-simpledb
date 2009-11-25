@@ -1,4 +1,4 @@
-module SimpleDB
+module DmAdapterSimpledb
   class Table
 
     def self.name_from_metadata(metadata)

@@ -1,4 +1,4 @@
-module SimpleDB
+module DmAdapterSimpledb
   class ChunkedString < String
     MAX_CHUNK_SIZE = 1019
 

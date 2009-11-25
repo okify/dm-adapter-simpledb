@@ -38,13 +38,11 @@ http://github.com/devver/dm-adapter-simpledb/
 
 == TODO
 
- * Backwards-compatibility option for nils stored as "nil" string
  * More complete handling of NOT conditions in queries
  * Robust quoting in SELECT calls
  * Handle exclusive ranges natively
    Implement as inclusive range + filter step
  * Tests for associations
- * Split up into multiple files
  * Option for smart lexicographical storage for numbers
    - Zero-pad integers
    - Store floats using exponential notation
@@ -62,6 +60,8 @@ http://github.com/devver/dm-adapter-simpledb/
  * Option to use libxml if available
  * Parallelized queries for increased throughput
  * Support of normalized 1:1 table:domain schemes that works with associations
+ * Sharding
+ * Support BatchPutAttributes
 
 == Usage
   
@@ -69,8 +69,14 @@ http://github.com/devver/dm-adapter-simpledb/
   
     require 'rubygems'
     require 'dm-core'
+    require 'dm-adapter-simpledb'
     
-    DataMapper.setup(:default, 'simpledb://ACCESS_KEY:SECRET_KEY@sdb.amazon.com/DOMAIN')
+    DataMapper.setup(:default, 
+      :adapter       => 'simpledb',
+      :access_key    => "ACCESS_KEY",
+      :secret_key    => "SECRET_KEY",
+      :domain        => "DOMAIN",
+    )
     
     [Same as the following, but skip the database.yml]
     
@@ -80,19 +86,17 @@ http://github.com/devver/dm-adapter-simpledb/
   
     Setup database.yml with the SimpleDB DataMapper adapter:
 
-      adapter:  simpledb
-      database: 'default'
+      adapter:    simpledb
       access_key: (a 20-character, alphanumeric sequence)
       secret_key: (a 40-character sequence)
-      domain: 'my_amazon_sdb_domain'
-      base_url: 'http://sdb.amazon.com'
+      domain:     'my_amazon_sdb_domain'
 
     Create a model
   
       class Tree
         include DataMapper::Resource
       
-        storage_name "trees"  # manually setting the domain
+        storage_name[:default] = "trees"
       
         property :id,   Serial
         property :name, String, :nullable => false
