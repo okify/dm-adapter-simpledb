@@ -1,0 +1,21 @@
+== 1.1.0 2009-11-24
+
+* 2 major enhancements:
+  * Supports legacy (pre-1.0.0) objects
+    
+    Prior to version 1.0.0 there were some differences in how this adapter
+    stored nils and strings containing newlines. The adapter will now detect old
+    objects and load them correctly.
+
+  * Adds object versioning
+
+    New records created by the adapter now have version metadata attached to
+    them, making it easier to change how objects are stored in the future.
+
+* 1 bug fix
+  * Fixed an "odd number of arguments for hash" error when saving objects.
+
+* Cleanup/refactoring
+  * Work has begun to start splitting out functionality into separate files and
+    classes
+  * Added unit tests to complement the existing integration tests
