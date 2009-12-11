@@ -26,7 +26,7 @@ module DataMapper
         end
         
         def create_model_storage(model)
-          sdb.create_domain(@sdb_options[:domain])
+          sdb.create_domain(model.storage_name || @sdb_options[:domain])
         end
         
         #On SimpleDB you probably don't want to destroy the whole domain
@@ -35,7 +35,7 @@ module DataMapper
         #rake db:automigrate destroy=true
         def destroy_model_storage(model)
           if ENV['destroy']!=nil && ENV['destroy']=='true'
-            sdb.delete_domain(@sdb_options[:domain])
+            sdb.delete_domain(model.storage_name || @sdb_options[:domain])
           end
         end
 

@@ -39,8 +39,11 @@ module DataMapper
 
       def create(resources)
         created = 0
+        domains = []
         time = Benchmark.realtime do
           resources.each do |resource|
+            domain = resource.model.storage_name
+            domains << domain
             uuid = UUIDTools::UUID.timestamp_create
             initialize_serial(resource, uuid.to_i)
 
@@ -52,14 +55,17 @@ module DataMapper
           end
         end
         DataMapper.logger.debug(format_log_entry("(#{created}) INSERT #{resources.inspect}", time))
-        modified!
+        domains.uniq.each {|d| modified! d} unless domains.empty?
         created
       end
       
       def delete(collection)
         deleted = 0
+        domains = []
         time = Benchmark.realtime do
           collection.each do |resource|
+            domain = resource.model.storage_name
+            domains << domain
             record = DmAdapterSimpledb::Record.from_resource(resource)
             item_name = record.item_name
             sdb.delete_attributes(domain, item_name)
@@ -67,12 +73,12 @@ module DataMapper
           end
           raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(collection.query)
         end; DataMapper.logger.debug(format_log_entry("(#{deleted}) DELETE #{collection.query.conditions.inspect}", time))
-        modified!
+        domains.uniq.each {|d| modified! d} unless domains.empty?
         deleted
       end
 
       def read(query)
-        maybe_wait_for_consistency
+        maybe_wait_for_consistency query.model.storage_name
         table = DmAdapterSimpledb::Table.new(query.model)
         conditions, order, unsupported_conditions = 
           set_conditions_and_sort_order(query, table.simpledb_type)
@@ -94,8 +100,11 @@ module DataMapper
       
       def update(attributes, collection)
         updated = 0
+        domains = []
         time = Benchmark.realtime do
           collection.each do |resource|
+            domain = resource.model.storage_name
+            domains << domain
             updated_resource = resource.dup
             updated_resource.attributes = attributes
             record = DmAdapterSimpledb::Record.from_resource(updated_resource)
@@ -113,7 +122,7 @@ module DataMapper
           raise NotImplementedError.new('Only :eql on delete at the moment') if not_eql_query?(collection.query)
         end
         DataMapper.logger.debug(format_log_entry("UPDATE #{collection.query.conditions.inspect} (#{updated} times)", time))
-        modified!
+        domains.uniq.each {|d| modified! d} unless domains.empty?
         updated
       end
       
@@ -126,6 +135,7 @@ module DataMapper
         table    = DmAdapterSimpledb::Table.new(query.model)
         sdb_type = table.simpledb_type
         conditions, order, unsupported_conditions = set_conditions_and_sort_order(query, sdb_type)
+        domain = query.model.storage_name
 
         query_call = "SELECT count(*) FROM #{domain} "
         query_call << "WHERE #{conditions.compact.join(' AND ')}" if conditions.length > 0
@@ -137,7 +147,7 @@ module DataMapper
       end
 
       # For testing purposes only.
-      def wait_for_consistency
+      def wait_for_consistency(domain)
         return unless @current_consistency_token
         token = :none
         begin
@@ -148,7 +158,7 @@ module DataMapper
 
     private
       # Returns the domain for the model
-      def domain
+      def foo_domain
         @sdb_options[:domain]
       end
 
@@ -233,6 +243,7 @@ module DataMapper
       
       #gets all results or proper number of results depending on the :limit
       def get_results(query, conditions, order)
+        domain = query.model.storage_name
         fields_to_request = query.fields.map{|f| f.field}
         fields_to_request << DmAdapterSimpledb::Record::METADATA_KEY
         output_list = fields_to_request.join(', ')
@@ -282,7 +293,7 @@ module DataMapper
         'SDB (%.1fs)  %s' % [ms, query.squeeze(' ')]
       end
 
-      def update_consistency_token
+      def update_consistency_token(domain)
         @current_consistency_token = UUIDTools::UUID.timestamp_create.to_s
         sdb.put_attributes(
           domain, 
@@ -290,9 +301,9 @@ module DataMapper
           {'__dm_consistency_token' => [@current_consistency_token]})
       end
 
-      def maybe_wait_for_consistency
+      def maybe_wait_for_consistency(domain)
         if consistency_policy == :automatic && @current_consistency_token
-          wait_for_consistency
+          wait_for_consistency domain
         end
       end
 
@@ -313,10 +324,10 @@ module DataMapper
       #
       # When waiting for the consistency token to show up, we use progressively
       # longer timeouts until finally giving up and raising an exception.
-      def modified!
+      def modified!(domain)
         case @consistency_policy
         when :manual, :automatic then
-          update_consistency_token
+          update_consistency_token domain
         when false then
           # do nothing
         else

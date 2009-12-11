@@ -20,6 +20,8 @@ Features:
 Note: as of version 1.0.0, this gem supports supports the DataMapper 0.10.*
 series and breaks backwards compatibility with DataMapper 0.9.*.
 
+This fork supports 1:1 table:domain mapping which is required for the OKify project.
+
 == Who
 
 Originally written by Jeremy Boles. 
@@ -29,38 +31,20 @@ Contributers:
   Dan Mayer (danmayer)
   Thomas Olausson (latompa)
   Avdi Grimm (avdi)
+  Mark Rendle (okify)
 
 
 == Where
 
-dm-adapter-simpledb is currently maintained by the Devver team and lives at:
-http://github.com/devver/dm-adapter-simpledb/
+This fork of dm-adapter-simpledb is currently maintained by the OKify team and lives at:
+http://github.com/okify/dm-adapter-simpledb/
 
 == TODO
 
- * More complete handling of NOT conditions in queries
- * Robust quoting in SELECT calls
- * Handle exclusive ranges natively
-   Implement as inclusive range + filter step
- * Tests for associations
- * Option for smart lexicographical storage for numbers
-   - Zero-pad integers
-   - Store floats using exponential notation
- * Option to store Date/Time/DateTime as ISO8601
- * Full aggregate support (min/max/etc)
- * Offset support
-   Note, from the SimpleDB documentation:
-   
-   "The next token returned by count(*) and select are interchangeable as long
-   as the where and order by clauses match. For example, if you want to return
-   the 200 items after the first 10,000 (similar to an offset), you can perform
-   a count with a limit clause of 10,000 and use the next token to return the
-   next 200 items with select."
-
+ * Update specs for new table:domain mapping
+ * Sharding support, with parallel querying across multiple domains for scalability
+ * Large object support, splitting records across multiple entities to allow more than 255 attribute values per record
  * Option to use libxml if available
- * Parallelized queries for increased throughput
- * Support of normalized 1:1 table:domain schemes that works with associations
- * Sharding
  * Support BatchPutAttributes
 
 == Usage
@@ -74,8 +58,7 @@ http://github.com/devver/dm-adapter-simpledb/
     DataMapper.setup(:default, 
       :adapter       => 'simpledb',
       :access_key    => "ACCESS_KEY",
-      :secret_key    => "SECRET_KEY",
-      :domain        => "DOMAIN",
+      :secret_key    => "SECRET_KEY"
     )
     
     [Same as the following, but skip the database.yml]
@@ -89,14 +72,13 @@ http://github.com/devver/dm-adapter-simpledb/
       adapter:    simpledb
       access_key: (a 20-character, alphanumeric sequence)
       secret_key: (a 40-character sequence)
-      domain:     'my_amazon_sdb_domain'
 
     Create a model
   
       class Tree
         include DataMapper::Resource
       
-        storage_name[:default] = "trees"
+        storage_names[:default] = "trees"
       
         property :id,   Serial
         property :name, String, :nullable => false

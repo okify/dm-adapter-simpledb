@@ -48,8 +48,8 @@ begin
   Jeweler::Tasks.new do |gem|
     gem.name            = "dm-adapter-simpledb"
     gem.summary         = "DataMapper adapter for Amazon SimpleDB"
-    gem.email           = "devs@devver.net"
-    gem.homepage        = "http://github.com/devver/dm-adapter-simpledb"
+    gem.email           = "mark@okify.com"
+    gem.homepage        = "http://github.com/okify/dm-adapter-simpledb"
     gem.description     = <<END
 A DataMapper adapter for Amazon's SimpleDB service. 
 
@@ -65,6 +65,7 @@ Features:
  * Array properties
  * Basic aggregation support (Model.count("..."))
  * String "chunking" permits attributes to exceed the 1024-byte limit
+ * One-to-one Model to SimpleDB Domain mapping
 
 Note: as of version 1.0.0, this gem supports supports the DataMapper 0.10.*
 series and breaks backwards compatibility with DataMapper 0.9.*.
@@ -74,7 +75,8 @@ END
       "Edward Ocampo-Gooding",
       "Dan Mayer",
       "Thomas Olausson",
-      "Avdi Grimm"
+      "Avdi Grimm",
+      "Mark Rendle"
     ]
     gem.add_dependency('dm-core',               '~> 0.10.0')
     gem.add_dependency('dm-aggregates',         '~> 0.10.0')
